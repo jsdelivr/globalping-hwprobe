@@ -60,7 +60,7 @@ while [ 1 ]; do
     RUNNING=$(docker inspect --format='{{.State.Running}}' globalping-probe)
 
     if [ "$RUNNING" != "true" ]; then
-        /usr/bin/docker run  --network host --restart=always --name globalping-probe jsdelivr/globalping-probe
+        /usr/bin/docker run -d --network host --restart=always --name globalping-probe jsdelivr/globalping-probe
     fi
 
     sleep 10
