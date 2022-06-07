@@ -1,0 +1,21 @@
+[Unit]
+Description= JSDELIVR Container startup script
+Documentation=https://docs.docker.com
+After=network-online.target docker.socket firewalld.service
+Wants=network-online.target
+Requires=docker.socket
+
+[Service]
+Type=notify
+# the default is not to use systemd for cgroups because the delegate issues still
+# exists and systemd currently does not support the cgroup feature set required
+# for containers run by docker
+ExecStart=/usr/bin/jsdelivr-startWorld.sh
+ExecReload=/bin/kill -s HUP $MAINPID
+# kill only the docker process, not all processes in the cgroup
+KillMode=process
+TimeoutSec=infinity
+# restart the docker process if it exits prematurely
+
+[Install]
+WantedBy=multi-user.target
