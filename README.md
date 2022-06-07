@@ -1,8 +1,7 @@
-## Building the firware
+## Building the firmware
 
-To install bitbake and all its dependencies please run this:
- 
- 
+To install bitbake and all its dependencies:
+
 ```
 sudo apt-get install bitbake
 ```
@@ -10,9 +9,9 @@ sudo apt-get install bitbake
 Then run the next command to download and build the firmware for the globalping hardware probes.
 NOTE: this process will take a couple of hours
 
-
 ```
-curl  https://bitbucket.org/nuno_felicio/buildfirmwarescript/raw/master/build_firmware.sh | bash
+git clone https://github.com/jsdelivr/globalping-hwprobe
+bash build_firmware.sh 
 ```
 
 When the build process finishes a firmware file with the extension ".sunxi-sdimg" will be in the current directory 
