@@ -10,6 +10,8 @@ echo "panic"  >  /sys/class/leds/nanopi\:green\:pwr/trigger
 /usr/bin/jsdelivr-firstBoot.sh
 /usr/bin/jsdelivr-updateContainer.sh
 
+/usr/bin/jsdelivr-maxPower.sh
+
 /bin/systemctl stop containerd
 /bin/systemctl stop docker
 
@@ -36,7 +38,6 @@ rm -rf  /var/lib/docker/*
 /bin/systemctl start containerd
 /bin/systemctl start docker
 
-/usr/bin/jsdelivr-maxPower.sh
 
 /bin/zcat /JSDELIVR_BASE_CONTAINER/globalping-probe.frozen.tar.gz  | /usr/bin/docker load > /dev/tty3
 
@@ -59,7 +60,7 @@ while [ 1 ]; do
     RUNNING=$(docker inspect --format='{{.State.Running}}' globalping-probe)
 
     if [ "$RUNNING" != "true" ]; then
-        /usr/bin/docker run -d --network host --restart=always --name globalping-probe ghcr.io/jsdelivr/globalping-probe:latest
+        /usr/bin/docker run  --network host --restart=always --name globalping-probe jsdelivr/globalping-probe
     fi
 
     sleep 10
