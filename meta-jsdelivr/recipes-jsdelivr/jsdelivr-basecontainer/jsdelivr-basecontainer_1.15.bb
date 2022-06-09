@@ -15,7 +15,7 @@ do_install() {
 	CURL_CA_BUNDLE=${STAGING_DIR_NATIVE}/etc/ssl/certs/ca-certificates.crt
 	export CURL_CA_BUNDLE
 	rm -rf globalping-probe.frozen
-	./download-frozen-image-v2.sh -d globalping-probe.frozen ghcr.io/jsdelivr/globalping-probe:latest
+	bash ./download-frozen-image-v2.sh -d globalping-probe.frozen ghcr.io/jsdelivr/globalping-probe:latest
 	tar -cC 'globalping-probe.frozen' . | gzip > globalping-probe.frozen.tar.gz
         install -d ${D}/JSDELIVR_BASE_CONTAINER
 	install -m 644 ${WORKDIR}/globalping-probe.frozen.tar.gz  ${D}/JSDELIVR_BASE_CONTAINER
