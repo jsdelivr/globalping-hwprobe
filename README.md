@@ -31,6 +31,15 @@ After the SD Card is correctly flashed and verified it can be inserted into the
 
 The actual probe code that runs inside a docker container on the device is automatically updated. [Learn more about the probe code](https://github.com/jsdelivr/globalping-probe#readme)
 
+## Accessing the probe
+
+For security reasons there is no way to get shell access of a running probe. But for debugging purposes you can connect to it via SSH to get the logs of the software probe. To connect:
+
+1. Login into your router's web UI and check the list of connected devices. You should be able to spot the globalping hardware probe in the list.
+2. Get the IP address of the probe
+3. Login via ssh `ssh logs@IP_ADDRESS` e.g. `ssh logs@192.168.1.145`
+4. You can now see the log output of the docker container running the software probe on your device.
+
 ## Security
 
 In addition to the [security features of the software probe](https://github.com/jsdelivr/globalping-probe#security) these are the extra safe guards were used to make the hardaware device as secure as possible:
