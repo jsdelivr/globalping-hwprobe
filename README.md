@@ -69,4 +69,19 @@ bash build_firmware.sh
 
 When the build process finishes a firmware file with the extension ".sunxi-sdimg" will be in the current directory 
 
+## USB update
+
+The probe firmware can upgrade the container itself using a USB flash drive as the initiator for the process but not as a method of offline upgrade. This is done as a security measure to avoid "Evil maid " type of attacks. 
+
+###USB update key
+To create the USB update key is just a matter of using a USB flash drive formatted as fat with a file named "JSDELIVR.UPD" in its root.
+The file can be empty as its presence is checked, not the file content.
+
+After the USB drive preparation is done, plug the USB Flash drive in the probe and power cycle it
+The probe will detect the USB flash and check for the presence of the update key file.
+If it's present, the upgrade process will start, with a rapid flashing of the GREEN led. At the end of the process, the initiator file  "JSDELIVR.UPD" will be erased, and the probe automatically reboots.
+
+
+###USB factory reset key
+If by any chance there is a need to go back to the container version bundled with the probe firmware, this can be quickly done by doing the same process as the USB Update, but instead with a file named "JSDELIVR.RESET"
 
