@@ -1,26 +1,17 @@
-## Building the firmware
+## Globalping Hardware Probe Firmware
 
-To install bitbake and all its dependencies:
+This is the firmware of the hardware probe we ship to our supporters. It was tested only on our specific ARM-v6 probes and we don't guarantee it will work correctly on other similar devices.
+As a user there it is not necessary to update your firmware unless something breaks or you need to replace the SD card.
 
-```
-sudo apt-get install bitbake
-```
+## Download the latest firmware
 
-Then run the next command to download and build the firmware for the globalping hardware probes.
-NOTE: this process will take a couple of hours
+TODO | Download links
 
-```
-git clone https://github.com/jsdelivr/globalping-hwprobe
-bash build_firmware.sh 
-```
+## Flashing the SD card
 
-When the build process finishes a firmware file with the extension ".sunxi-sdimg" will be in the current directory 
+The compiled firmware could be flashed to the SDCARD using Raspberry PI Imager, balenaEtecher, Rufus or other similar software.
 
-## Flashing the sdcard
-
-This could be flashed to the SDCARD using Raspberry PI Imager, balenaEtecher, Rufus or another similar product.
-
-After the sdcard is correctly flashed and verified it can be inserted into the GlobalPing hardware probe and the probe powered up.
+After the SD Card is correctly flashed and verified it can be inserted into the Globalping hardware probe and the probe powered up.
 
 
 ## Hardware Probe startup process
@@ -38,18 +29,35 @@ After the sdcard is correctly flashed and verified it can be inserted into the 
 
 ## Updates
 
-The code that runs inside the container is automatically updated, with multiple ways of doing it (in probe code and in the script code that starts the container )
+The actual probe code that runs inside a docker container on the device is automatically updated. [Learn more about the probe code](https://github.com/jsdelivr/globalping-probe#readme)
 
 ## Security
 
-These safe guards were used make the Hardware Probe as secure as possible:
+In addition to the [security features of the software probe](https://github.com/jsdelivr/globalping-probe#security) these are the extra safe guards were used to make the hardaware device as secure as possible:
 
- - The rootfs of the probe OS is read-only so that any unknown exploit 
- - Kernel configuration was tunned to reduce the size and exploitable area
- - The Container is completely run from RAM, to eliminate persisted exploits
- - The OS will automatically reboot every 3 days to clear any possible exploit 
- - The only user that is illegible to use SSH is the "logs" user, and that doesn't have a shell
- - The OS was trimmed to have the minimum attack surface
+ - The rootfs of the probe OS is read-only 
+ - The kernel configuration was tunned to reduce the size and exploitable area
+ - The probe container is completely run from RAM
+ - The OS will automatically reboot every 3 days
+ - The only user that is eligible to use SSH is the "logs" user, without shell access
+ - The OS was trimmed to have minimum attack surface
  
+## Building the firmware
+
+To install bitbake and all its dependencies:
+
+```
+sudo apt-get install bitbake
+```
+
+Then run the next command to download and build the firmware for the globalping hardware probes.
+NOTE: this process will take a couple of hours
+
+```
+git clone https://github.com/jsdelivr/globalping-hwprobe
+bash build_firmware.sh 
+```
+
+When the build process finishes a firmware file with the extension ".sunxi-sdimg" will be in the current directory 
 
 
