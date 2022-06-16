@@ -120,6 +120,7 @@ HostKey /var/run/ssh/ssh_host_ed25519_key
 
 Match User logs
   PasswordAuthentication yes
+  PermitEmptyPasswords yes
   AllowTCPForwarding no
   ForceCommand /bin/bash -c "/usr/bin/docker logs globalping-probe -f "
 
