@@ -9,7 +9,7 @@ TODO | Download links
 
 ## Flashing the SD card
 
-The compiled firmware can be flashed to an SD card using Raspberry PI Imager, balenaEtecher, Rufus or other similar software.
+The compiled firmware can be flashed to an SD card using Raspberry PI Imager, balenaEtcher, Rufus or other similar software.
 
 After the SD Card is correctly flashed and verified it can be inserted into the Globalping hardware probe and the probe powered up.
 
