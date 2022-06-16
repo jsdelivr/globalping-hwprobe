@@ -1,7 +1,7 @@
 ## Globalping Hardware Probe Firmware
 
 This is the firmware of the hardware probe we ship to our supporters. It was tested only on our specific ARM-v6 probes and we don't guarantee it will work correctly on other similar devices.
-As a user there it is not necessary to update your firmware unless something breaks or you need to replace the SD card.
+As a user it is not necessary to update your firmware unless something breaks or you need to replace the SD card.
 
 ## Download the latest firmware
 
@@ -9,7 +9,7 @@ TODO | Download links
 
 ## Flashing the SD card
 
-The compiled firmware could be flashed to the SDCARD using Raspberry PI Imager, balenaEtecher, Rufus or other similar software.
+The compiled firmware can be flashed to an SD card using Raspberry PI Imager, balenaEtecher, Rufus or other similar software.
 
 After the SD Card is correctly flashed and verified it can be inserted into the Globalping hardware probe and the probe powered up.
 
@@ -22,9 +22,9 @@ After the SD Card is correctly flashed and verified it can be inserted into the
 
 ## Errors 
 
- - ### Solid red LED ( the green LED never turns on)
+ - #### Solid red LED ( the green LED never turns on)
       If during the startup process the green LED never turn's on, it could be a flash sdcard issue or the sdcard is not correctly installed on the slot.
- - ### Blinking red LED
+ - #### Blinking red LED
       Probe Software has failed, and the software restart is being done  (should jump to solid Green when finishes).
 
 ## Updates
@@ -42,38 +42,48 @@ For security reasons there is no way to get shell access of a running probe. But
 
 ## Security
 
-In addition to the [security features of the software probe](https://github.com/jsdelivr/globalping-probe#security) these are the extra safe guards were used to make the hardaware device as secure as possible:
+In addition to the [security features of the software probe](https://github.com/jsdelivr/globalping-probe#security) these are the extra safe guards we used to make the hardware device as secure as possible:
 
  - The rootfs of the probe OS is read-only 
  - The kernel configuration was tunned to reduce the size and exploitable area
- - The probe container is completely run from RAM
- - The OS will automatically reboot every 3 days
+ - The probe container runs completely from RAM
+ - The OS will automatically reboot every 3 days + random amount of hours between 1 and 48.
  - The only user that is eligible to use SSH is the "logs" user, without shell access
  - The OS was trimmed to have minimum attack surface
  
 ## Building the firmware
 
-To install bitbake and all its dependencies:
+The script was tested on Ubuntu 20.04 LTS.
+First install the required software:
 
 ```
-sudo apt-get install bitbake
+apt install gawk wget git diffstat unzip texinfo gcc build-essential chrpath socat cpio python3 python3-pip python3-pexpect xz-utils debianutils iputils-ping python3-git python3-jinja2 libegl1-mesa libsdl1.2-dev pylint3 xterm python3-subunit mesa-common-dev zstd liblz4-tool
 ```
 
-Then run the next command to download and build the firmware for the globalping hardware probes.
-NOTE: this process will take a couple of hours
-
+Next create a user for the compilation process and clone this repo locally.
 ```
+useradd -m compiler
+su compiler
+bash
+cd /home/compiler
 git clone https://github.com/jsdelivr/globalping-hwprobe
+```
+
+You can now run the bash script that will download all the necessary dependencies and build the firmware.
+NOTE: This process can take a couple of hours
+
+```
+cd globalping-hwprobe
 bash build_firmware.sh 
 ```
 
-When the build process finishes a firmware file with the extension ".sunxi-sdimg" will be in the current directory 
+After the build is done a firmware file with the extension ".sunxi-sdimg" will appear in the current directory.
 
 ## USB update
 
 The probe firmware can upgrade the container itself using a USB flash drive as the initiator for the process but not as a method of offline upgrade. This is done as a security measure to avoid "Evil maid " type of attacks. 
 
-###USB update key
+#### USB update key
 To create the USB update key is just a matter of using a USB flash drive formatted as fat with a file named "JSDELIVR.UPD" in its root.
 The file can be empty as its presence is checked, not the file content.
 
@@ -82,6 +92,6 @@ The probe will detect the USB flash and check for the presence of the update key
 If it's present, the upgrade process will start, with a rapid flashing of the GREEN led. At the end of the process, the initiator file  "JSDELIVR.UPD" will be erased, and the probe automatically reboots.
 
 
-###USB factory reset key
+#### USB factory reset key
 If by any chance there is a need to go back to the container version bundled with the probe firmware, this can be quickly done by doing the same process as the USB Update, but instead with a file named "JSDELIVR.RESET"
 
