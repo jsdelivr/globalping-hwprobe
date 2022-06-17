@@ -5,7 +5,9 @@ As a user it is not necessary to update your firmware unless something breaks or
 
 ## Download the latest firmware
 
-TODO | Download links
+Check the [Releases](https://github.com/jsdelivr/globalping-hwprobe/releases)
+
+The gz file is ready to get flashed to your SD Card, no preparation required.
 
 ## Flashing the SD card
 
