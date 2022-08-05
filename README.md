@@ -1,9 +1,9 @@
 ## Globalping Hardware Probe Firmware
 
-This is the firmware of the hardware probe we ship to our supporters. It was tested only on our specific ARM-v6 probes and we don't guarantee it will work correctly on other similar devices.
+This is the firmware of [the hardware probe we ship to our supporters](https://github.com/jsdelivr/globalping-probe#hardware-probes). It was tested only on our specific ARM-v6 probes and we don't guarantee it will work correctly on other similar devices.
 As a user it is not necessary to update your firmware unless something breaks or you need to replace the SD card.
 
-[How to get a Globalping hardware probe](https://github.com/jsdelivr/globalping-probe#hardware-probes)
+[How to get a Globalping hardware probe](https://www.jsdelivr.com/globalping)
 
 ## Download the latest firmware
 
