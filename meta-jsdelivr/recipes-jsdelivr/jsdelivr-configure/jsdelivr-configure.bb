@@ -4,7 +4,7 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 
 
 
-SRC_URI = "file://sshd_config_readonly_jsdelivr"
+SRC_URI = "file://sshd_config_readonly_jsdelivr "
 
 S = "${WORKDIR}"
 
@@ -12,7 +12,7 @@ inherit useradd
 
 GROUPADD_PARAM:${PN} = "docker"
 
-USERADD_PARAM:${PN} = "-u 1200 -d /home/logs -r -p '' -G docker logs "
+USERADD_PARAM:${PN} = "-m -u 1200 -d /home/logs -r -p '' -G docker logs "
 
 USERADD_PACKAGES = "${PN} "
 
@@ -23,6 +23,8 @@ do_install() {
 
 
 
-#FILES:${PN} = "${sysconfdir}/*"
+FILES_${PN} = "/home/logs/*"
 
 INHIBIT_PACKAGE_DEBUG_SPLIT = "1"
+
+DIRFILES = "1"
