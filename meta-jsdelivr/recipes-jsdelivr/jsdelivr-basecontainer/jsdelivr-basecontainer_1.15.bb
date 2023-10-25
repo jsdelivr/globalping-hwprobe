@@ -8,8 +8,9 @@ SRC_URI += "file://download-frozen-image-v2.sh"
 S = "${WORKDIR}"
 
 RDEPENDS:${PN} += "bash"
-DEPENDS = "jq-native curl-native ca-certificates-native"
+DEPENDS = "ca-certificates-native jq-native curl-native "
 
+do_install[network] = "1"
 
 do_install() {
 	CURL_CA_BUNDLE=${STAGING_DIR_NATIVE}/etc/ssl/certs/ca-certificates.crt

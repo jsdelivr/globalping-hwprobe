@@ -1,6 +1,10 @@
 #!/bin/bash
 
 
+export GP_HOST_HW=true
+export GP_HOST_DEVICE=v1
+
+
 echo "Starting JSDELIVR World" > /dev/tty3
 
 echo "panic"  >  /sys/class/leds/nanopi\:green\:pwr/trigger
@@ -60,7 +64,7 @@ while [ 1 ]; do
     RUNNING=$(docker inspect --format='{{.State.Running}}' globalping-probe)
 
     if [ "$RUNNING" != "true" ]; then
-        /usr/bin/docker run -d --network host --restart=always --name globalping-probe jsdelivr/globalping-probe
+        /usr/bin/docker run -d  --env GP_HOST_HW --env GP_HOST_DEVICE   --network host --restart=always --name globalping-probe jsdelivr/globalping-probe
     fi
 
     sleep 10
