@@ -57,11 +57,11 @@ In addition to the [security features of the software probe](https://github.com/
  
 ## Building the firmware
 
-The script was tested on Ubuntu 20.04 LTS.
+The script was tested on Ubuntu 22.04 LTS.
 First install the required software:
 
 ```
-apt install gawk wget git diffstat unzip texinfo gcc build-essential chrpath socat cpio python3 python3-pip python3-pexpect xz-utils debianutils iputils-ping python3-git python3-jinja2 libegl1-mesa libsdl1.2-dev pylint3 xterm python3-subunit mesa-common-dev zstd liblz4-tool
+apt update -y && apt install gawk wget git diffstat unzip texinfo gcc build-essential chrpath socat cpio python3 python3-pip python3-pexpect xz-utils debianutils iputils-ping python3-git python3-jinja2 libegl1-mesa libsdl1.2-dev xterm python3-subunit mesa-common-dev zstd liblz4-tool
 ```
 
 Next create a user for the compilation process and clone this repo locally.
