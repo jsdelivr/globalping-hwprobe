@@ -45,10 +45,11 @@ rm -rf  /var/lib/docker/*
 
 /bin/zcat /JSDELIVR_BASE_CONTAINER/globalping-probe.frozen.tar.gz  | /usr/bin/docker load > /dev/tty3
 
-
+/usr/bin/jsdelivr-grabDevLogs.sh &
 /usr/bin/jsdelivr-mandatoryReboot.sh  &
 /usr/bin/jsdelivr-systemMonitor.sh  &
 /usr/bin/jsdelivr-systemWatchdog.sh &
+/usr/bin/jsdelivr-updateContainerAuto.sh &
 
 
 sleep 3

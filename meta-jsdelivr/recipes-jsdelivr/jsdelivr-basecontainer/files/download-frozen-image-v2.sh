@@ -29,6 +29,7 @@ usage() {
     echo "                <b64creds>        The base64 encoded version of 'user:pass'. NOT RECOMMENDED! MAY LEAK!"
     echo "      -A|--no-auth                Do not use any form of authentication. Disables any --auth option."
     echo "      -D|--debug                  Debug output. If used twice, sensitive information might be displayed!"
+    echo "      -Z|--check                  dont download, just check hash"
     echo "      -c|--color                  Force color even if not on tty"
     echo "      -C|--no-color               No color output. Will be disabled if no tty is detected on stdout"
     echo "      -r|--architecture <arch>    Architecture to download. Tries to be auto-detect according current arch..."
@@ -62,6 +63,7 @@ KEEP=0
 STDOUT=0
 FORCE=0
 DEBUG=0
+CHECK=0
 PROTOCOL='https'
 ARGS=()
 DESTFILE=""
@@ -132,6 +134,7 @@ while [[ -n $1 ]]; do
                             ;;
         -A|--no-auth)       AUTH=0;;
         -D|--debug)         DEBUG+=1;;
+        -Z|--check)         CHECK=1;;
         -c|--color)         COLOR=1;;
         -C|--no-color)      COLOR=0;;
         -r|--architecture)  ARCH="$2"; shift ;;
@@ -481,6 +484,10 @@ handle_single_manifest_v2() {
                     comment="Downloaded"
                 fi
                 if ((download)); then
+                    if ((CHECK==1)); then
+                        echo "CHECK FAILURE ->$CHECK"
+                        exit 123
+                    fi
                     T0=$SECONDS
                     fetch_blob "$urlBase/blobs/$layerDigest" "$dir/$layerTar"
                     T1=$SECONDS
@@ -1006,6 +1013,10 @@ for ind in "${!ARGS[@]}"; do
                     comment="Downloaded"
                 fi
                 if ((download)); then
+		    if ((CHECK==1)); then
+			error  "CHECK FAILURE 2 ->$CHECK"
+			exit 123
+		    fi
                     T0=$SECONDS
                     fetch_blob "$urlBase/blobs/$layerDigest" "$dir/$layerTar"
                     T1=$SECONDS
