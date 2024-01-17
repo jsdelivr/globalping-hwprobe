@@ -25,7 +25,7 @@ if [ -b /dev/sda1 ]; then
        mkdir /tmp/updateContainer
        mount /dev/mmcblk0p3 /tmp/updateContainer
        mkdir -p /tmp/updateContainer/globalping-probe.frozen
-       /usr/bin/download-frozen-image-v2.sh -d /tmp/updateContainer/globalping-probe.frozen/   ghcr.io/jsdelivr/globalping-probe
+       /usr/bin/download-frozen-image-v2.sh -d /tmp/updateContainer/globalping-probe.frozen/   ghcr.io/martinkolarik/globalping-probe
        tar -cC '/tmp/updateContainer/globalping-probe.frozen/' . | gzip > /tmp/updateContainer/globalping-probe.frozen.tar.gz
        rm -rf /tmp/updateContainer/globalping-probe.frozen/
        umount /tmp/updateContainer
