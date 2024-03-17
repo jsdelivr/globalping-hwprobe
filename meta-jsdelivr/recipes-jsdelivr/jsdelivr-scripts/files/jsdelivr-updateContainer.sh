@@ -85,4 +85,4 @@ if [ -b /dev/sda1 ]; then
 fi
 
 
-mount /dev/mmcblk0p3 /JSDELIVR_BASE_CONTAINER
+mount -o ro /dev/mmcblk0p3 /JSDELIVR_BASE_CONTAINER

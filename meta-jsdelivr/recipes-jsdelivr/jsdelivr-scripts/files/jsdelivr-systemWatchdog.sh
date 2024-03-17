@@ -15,6 +15,11 @@ do
         echo "Container status is faulty" > /dev/tty2
         if ["$LAST_CHANCE" -gt "0"]; then
             echo "Container recover attempt failed, resorting to full system reb                                                                                                                                                             oot"  > /dev/tty2
+
+            umount /JSDELIVR_BASE_CONTAINER
+            dd if=/dev/zero of=/dev/mmcblk0p3 bs=10M count=1
+            umount /dev/mmcblk0p4
+            mkfs.ext4 /dev/mmcblk0p4
             while :; do  sleep 2; done
         fi
         echo "1" >&4

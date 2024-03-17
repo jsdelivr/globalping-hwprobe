@@ -35,7 +35,7 @@ while :; do
     killall -STOP jsdelivr-mandatoryReboot.sh
 
     mkdir /tmp/AutoUpdate
-    mount /dev/mmcblk0p4 /tmp/AutoUpdate
+    mount -o ro /dev/mmcblk0p4 /tmp/AutoUpdate
 
     if mount | grep "/tmp/AutoUpdate" > /dev/null; then
         echo "Partition mounted" > /dev/tty5
@@ -60,6 +60,7 @@ while :; do
         continue
     fi
 
+    mount -o remount,rw /tmp/AutoUpdate
     mkdir /tmp/AutoUpdate/download
 
 
