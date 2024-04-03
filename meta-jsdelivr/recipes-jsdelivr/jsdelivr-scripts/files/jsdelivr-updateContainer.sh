@@ -25,8 +25,8 @@ if [ -b /dev/sda1 ]; then
        mkdir /tmp/updateContainer
        mount /dev/mmcblk0p3 /tmp/updateContainer
        mkdir -p /tmp/updateContainer/globalping-probe.frozen
-       /usr/bin/download-frozen-image-v2.sh -d /tmp/updateContainer/globalping-probe.frozen/   ghcr.io/jsdelivr/globalping-probe
-       tar -cC '/tmp/updateContainer/globalping-probe.frozen/' . | gzip > /tmp/updateContainer/globalping-probe.frozen.tar.gz
+       skopeo --override-arch arm copy docker://globalping/globalping-probe:latest docker-archive:/tmp/updateContainer/globalping-probe.frozen:globalping-probe
+       date >> /tmp/updateContainer/MANUAL_UPDATE
        rm -rf /tmp/updateContainer/globalping-probe.frozen/
        umount /tmp/updateContainer
 
@@ -53,8 +53,9 @@ if [ -b /dev/sda1 ]; then
        mkdir /tmp/updateContainer
        mount /dev/mmcblk0p3 /tmp/updateContainer
        mkdir -p /tmp/updateContainer/globalping-probe.frozen
-       /usr/bin/download-frozen-image-v2.sh -d /tmp/updateContainer/globalping-probe.frozen/  ghcr.io/jsdelivr/globalping-probe:dev
-       tar -cC '/tmp/updateContainer/globalping-probe.frozen/' . | gzip > /tmp/updateContainer/globalping-probe.frozen.tar.gz
+       skopeo --override-arch arm copy docker://globalping/globalping-probe:dev docker-archive:/tmp/updateContainer/globalping-probe.frozen:globalping-probe
+       date >> /tmp/updateContainer/MANUAL_UPDATE
+
        rm -rf /tmp/updateContainer/globalping-probe.frozen/
        umount /tmp/updateContainer
 

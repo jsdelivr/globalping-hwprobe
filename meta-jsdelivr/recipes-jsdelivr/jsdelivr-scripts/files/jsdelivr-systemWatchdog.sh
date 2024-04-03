@@ -3,18 +3,18 @@
 COUNTER=0
 (( TTL_MAX= 60 * 5  ))
 LAST_CHANCE=0
-
+LIMIT=0
 exec 4> /dev/watchdog1
 
 
 while [ 1 ];
 do
     COUNTER=$((COUNTER+1))
-    echo "System WatchDog counter is :$COUNTER   and Max is:$TTL_MAX " > /dev/tty2
+    echo "System WatchDog counter:$COUNTER Max:$TTL_MAX LAST_CHANCE:$LAST_CHANCE" > /dev/tty2
     if [ "$COUNTER" -gt "$TTL_MAX" ]; then
         echo "Container status is faulty" > /dev/tty2
-        if ["$LAST_CHANCE" -gt "0"]; then
-            echo "Container recover attempt failed, resorting to full system reb                                                                                                                                                             oot"  > /dev/tty2
+        if [ "$LAST_CHANCE" -gt "$LIMIT" ]; then
+            echo "Container recover attempt failed, resorting to full system reboot"  > /dev/tty2
 
             umount /JSDELIVR_BASE_CONTAINER
             dd if=/dev/zero of=/dev/mmcblk0p3 bs=10M count=1
@@ -50,4 +50,3 @@ do
     sleep 1
 
 done
-
