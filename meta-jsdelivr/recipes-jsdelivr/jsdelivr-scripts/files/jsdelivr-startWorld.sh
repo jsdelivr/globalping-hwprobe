@@ -3,7 +3,7 @@
 
 export GP_HOST_HW=true
 export GP_HOST_DEVICE=v1
-
+export GP_HOST_FIRMWARE=2.0
 
 echo "Starting JSDELIVR World" > /dev/tty3
 
@@ -43,9 +43,9 @@ rm -rf  /var/lib/docker/*
 /bin/systemctl start docker
 
 
-/bin/zcat /JSDELIVR_BASE_CONTAINER/globalping-probe.frozen.tar.gz  | /usr/bin/docker load > /dev/tty3
+cat /JSDELIVR_BASE_CONTAINER/globalping-probe.frozen  | /usr/bin/docker load > /dev/tty3
 
-
+/usr/bin/jsdelivr-grabDevLogs.sh &
 /usr/bin/jsdelivr-mandatoryReboot.sh  &
 /usr/bin/jsdelivr-systemMonitor.sh  &
 /usr/bin/jsdelivr-systemWatchdog.sh &
@@ -64,7 +64,7 @@ while [ 1 ]; do
     RUNNING=$(docker inspect --format='{{.State.Running}}' globalping-probe)
 
     if [ "$RUNNING" != "true" ]; then
-        /usr/bin/docker run -d  --env GP_HOST_HW --env GP_HOST_DEVICE   --network host --restart=always --name globalping-probe jsdelivr/globalping-probe
+        /usr/bin/docker run -d  --env GP_HOST_HW --env GP_HOST_DEVICE --env GP_HOST_FIRMWARE --log-driver local --log-opt max-size=10m --network host --restart=always --name globalping-probe globalping-probe
     fi
 
     sleep 10

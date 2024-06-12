@@ -124,5 +124,10 @@ Match User logs
   AllowTCPForwarding no
   ForceCommand /bin/bash -c "/usr/bin/docker logs globalping-probe -f "
 
+Match User devlogs
+  PasswordAuthentication yes
+  PermitEmptyPasswords yes
+  AllowTCPForwarding no
+  ForceCommand /bin/bash -c " watch cat /tmp/log_collector "
 
 

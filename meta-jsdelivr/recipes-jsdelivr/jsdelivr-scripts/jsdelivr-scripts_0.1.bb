@@ -11,6 +11,9 @@ SRC_URI += "file://jsdelivr-systemWatchdog.sh"
 SRC_URI += "file://jsdelivr-updateContainer.sh"
 SRC_URI += "file://jsdelivr-maxPower.sh"
 SRC_URI += "file://jsdelivr-normalPower.sh"
+SRC_URI += "file://jsdelivr-updateContainerAuto.sh"
+SRC_URI += "file://jsdelivr-grabDevLogs.sh"
+SRC_URI += "file://jsdelivr-keepWatchdogHappy.sh"
 
 
 
@@ -33,6 +36,9 @@ do_install() {
 
              install -m 0755 ${WORKDIR}/jsdelivr-maxPower.sh ${D}${bindir}
              install -m 0755 ${WORKDIR}/jsdelivr-normalPower.sh ${D}${bindir}
+             install -m 0755 ${WORKDIR}/jsdelivr-updateContainerAuto.sh ${D}${bindir}
+             install -m 0755 ${WORKDIR}/jsdelivr-grabDevLogs.sh ${D}${bindir}
+             install -m 0755 ${WORKDIR}/jsdelivr-keepWatchdogHappy.sh ${D}${bindir}
 
 }
 

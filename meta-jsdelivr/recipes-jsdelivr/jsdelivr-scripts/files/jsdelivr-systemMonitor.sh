@@ -20,6 +20,7 @@ do
         if [ "$UP_SECS" -gt "$STABLE_MINIMUM" ]; then
             echo "Container status is STABLE" > /dev/tty1
             touch /tmp/SYSTEM_STABLE
+            touch /tmp/CAN_UPGRADE
             #echo 1 >  /sys/class/leds/nanopi\:green\:pwr/shot
              echo "none"  >  /sys/class/leds/nanopi\:green\:pwr/trigger
              echo "default-on" > /sys/class/leds/nanopi\:blue\:status/trigger

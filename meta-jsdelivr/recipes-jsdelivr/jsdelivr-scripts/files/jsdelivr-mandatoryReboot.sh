@@ -24,7 +24,12 @@ echo "Sleeping...." > /dev/tty4
 
 sleep $MANDATORY_REBOOT_PERIOD
 
-echo "It's time...." > /dev/tty4
+
+echo "It's time.... to UPDATE" > /dev/tty4
+
+/usr/bin/jsdelivr-updateContainerAuto.sh
+
+echo "It's time....to REBOOT" > /dev/tty4
 
 
 killall jsdelivr_systemWatchdog

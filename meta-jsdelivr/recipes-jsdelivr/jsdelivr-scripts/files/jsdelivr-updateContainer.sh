@@ -25,8 +25,8 @@ if [ -b /dev/sda1 ]; then
        mkdir /tmp/updateContainer
        mount /dev/mmcblk0p3 /tmp/updateContainer
        mkdir -p /tmp/updateContainer/globalping-probe.frozen
-       /usr/bin/download-frozen-image-v2.sh -d /tmp/updateContainer/globalping-probe.frozen/   ghcr.io/jsdelivr/globalping-probe
-       tar -cC '/tmp/updateContainer/globalping-probe.frozen/' . | gzip > /tmp/updateContainer/globalping-probe.frozen.tar.gz
+       skopeo --override-arch arm copy docker://globalping/globalping-probe:latest docker-archive:/tmp/updateContainer/globalping-probe.frozen:globalping-probe
+       date >> /tmp/updateContainer/MANUAL_UPDATE
        rm -rf /tmp/updateContainer/globalping-probe.frozen/
        umount /tmp/updateContainer
 
@@ -37,6 +37,37 @@ if [ -b /dev/sda1 ]; then
        while :; do  sleep 2; done
 
    fi
+
+   if [ -f /tmp/updateFlag/JSDELIVR-DEV.UPD ]; then
+       echo "DEV UPDATE Flag found!" > /dev/tty4
+       echo timer  > /sys/class/leds/nanopi\:blue\:status/trigger
+       echo 50 >   /sys/class/leds/nanopi\:blue\:status/delay_on
+       echo 50 >   /sys/class/leds/nanopi\:blue\:status/delay_off
+
+       rm /tmp/updateFlag/JSDELIVR-DEV.UPD
+       sync
+       umount /tmp/updateFlag
+       echo "Starting container update process" > /dev/tty4
+
+       mkfs.ext4 /dev/mmcblk0p3
+       mkdir /tmp/updateContainer
+       mount /dev/mmcblk0p3 /tmp/updateContainer
+       mkdir -p /tmp/updateContainer/globalping-probe.frozen
+       skopeo --override-arch arm copy docker://globalping/globalping-probe:dev docker-archive:/tmp/updateContainer/globalping-probe.frozen:globalping-probe
+       date >> /tmp/updateContainer/MANUAL_UPDATE
+
+       rm -rf /tmp/updateContainer/globalping-probe.frozen/
+       umount /tmp/updateContainer
+
+       sleep 5
+
+       reboot
+       echo "1" > /dev/watchdog
+       while :; do  sleep 2; done
+
+   fi
+
+
 
    if [ -f /tmp/updateFlag/JSDELIVR.RESET ]; then
       echo "Erase container update" > /dev/tty4
@@ -55,4 +86,4 @@ if [ -b /dev/sda1 ]; then
 fi
 
 
-mount /dev/mmcblk0p3 /JSDELIVR_BASE_CONTAINER
+mount -o ro /dev/mmcblk0p3 /JSDELIVR_BASE_CONTAINER

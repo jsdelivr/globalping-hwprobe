@@ -10,11 +10,13 @@ S = "${WORKDIR}"
 
 inherit useradd 
 
-GROUPADD_PARAM:${PN} = "docker"
 
-USERADD_PARAM:${PN} = "-m -u 1200 -d /home/logs -r -p '' -G docker logs "
+USERADD_PACKAGES = "${PN}"
 
-USERADD_PACKAGES = "${PN} "
+GROUPADD_PARAM:${PN} = " -g 800 docker"
+
+USERADD_PARAM:${PN} = "-m -u 300 -d /home/logs -r -p '' -g docker logs; -m -u 301 -d /home/devlogs -r -p '' -g docker devlogs "
+
 
 do_install() {
         install -d ${D}${sysconfdir}/ssh
@@ -23,7 +25,7 @@ do_install() {
 
 
 
-FILES_${PN} = "/home/logs/*"
+FILES_${PN}  = "/home/logs/* /home/devlogs/*"
 
 INHIBIT_PACKAGE_DEBUG_SPLIT = "1"
 
