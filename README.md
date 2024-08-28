@@ -75,6 +75,13 @@ cd /home/compiler
 git clone https://github.com/jsdelivr/globalping-hwprobe
 ```
 
+NOTE for maintainers:
+Before building a new version update the version inside the firmware itself.
+1. Update https://github.com/jsdelivr/globalping-hwprobe/blob/master/meta-jsdelivr/recipes-jsdelivr/jsdelivr-scripts/files/jsdelivr-startWorld.sh#L6
+2. Clone and build
+3. Tag with the same version
+4. Upload
+
 You can now run the bash script that will download all the necessary dependencies and build the firmware.
 NOTE: This process can take a couple of hours
 
