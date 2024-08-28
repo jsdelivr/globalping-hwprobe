@@ -3,7 +3,7 @@
 
 export GP_HOST_HW=true
 export GP_HOST_DEVICE=v1
-export GP_HOST_FIRMWARE=v2.0
+export GP_HOST_FIRMWARE=v2.1
 
 echo "Starting JSDELIVR World" > /dev/tty3
 
