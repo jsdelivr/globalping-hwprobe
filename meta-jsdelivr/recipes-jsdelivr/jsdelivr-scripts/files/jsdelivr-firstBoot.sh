@@ -6,6 +6,8 @@ then
     mount /dev/mmcblk0p2 /tmp/once
     mount -o remount,rw /dev/mmcblk0p2 /tmp/once
     cp /etc/machine-id /tmp/once/etc
+    export MUID=$(dd if=/dev/random bs=1k count=1 2>/dev/null | sha256sum | awk '{print $1}')
+    echo "GP_HW_UID=$MUID" > /tmp/once/etc/muid.data
     echo "VendorClassIdentifier=globalping-probe" >> /tmp/once/lib/systemd/network/80-wired.network
     echo "LLMNR=no" >> /tmp/once/etc/systemd/resolved.conf
     echo "NTP=pool.ntp.org" >> /tmp/once/etc/systemd/timesyncd.conf
