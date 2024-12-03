@@ -1,9 +1,10 @@
 #!/bin/bash
 
+source /etc/muid.data
 
 export GP_HOST_HW=true
 export GP_HOST_DEVICE=v1
-export GP_HOST_FIRMWARE=v2.1
+export GP_HOST_FIRMWARE=v2.2
 
 echo "Starting JSDELIVR World" > /dev/tty3
 
@@ -64,7 +65,7 @@ while [ 1 ]; do
     RUNNING=$(docker inspect --format='{{.State.Running}}' globalping-probe)
 
     if [ "$RUNNING" != "true" ]; then
-        /usr/bin/docker run -d  --env GP_HOST_HW --env GP_HOST_DEVICE --env GP_HOST_FIRMWARE --log-driver local --log-opt max-size=10m --network host --restart=always --name globalping-probe globalping-probe
+        /usr/bin/docker run -d  --env GP_HOST_HW --env GP_HOST_DEVICE --env GP_HOST_FIRMWARE --env GP_PROBE_UUID --log-driver local --log-opt max-size=10m --network host --restart=always --name globalping-probe globalping-probe
     fi
 
     sleep 10
