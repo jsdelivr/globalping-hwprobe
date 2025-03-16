@@ -2,7 +2,7 @@ git clone git://git.yoctoproject.org/poky -b kirkstone
 cd poky; 
 
 #checkout the tested version of the layer Poky
-git checkout 72ddfbc89aa94c2a4adfe2b8545c52fc2a0065ab
+git checkout 959405cc371df8d51bbd41e7ee970a943c738297
 
 ln -s ../meta-jsdelivr/ meta-jsdelivr
 
