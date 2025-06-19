@@ -4,7 +4,7 @@ source /etc/muid.data
 
 export GP_HOST_HW=true
 export GP_HOST_DEVICE=v1
-export GP_HOST_FIRMWARE=v2.2
+export GP_HOST_FIRMWARE=v2.3
 
 echo "Starting JSDELIVR World" > /dev/tty3
 
