@@ -1,9 +1,9 @@
 [Unit]
 Description= JSDELIVR Container startup script
 Documentation=https://docs.docker.com
-After=network-online.target docker.socket firewalld.service
+After=network-online.target docker.socket firewalld.service local-fs.target
 Wants=network-online.target
-Requires=docker.socket
+Requires=docker.socket local-fs.target
 
 [Service]
 Type=notify

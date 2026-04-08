@@ -1,0 +1,38 @@
+#
+# NanoPi Zero2 Yocto Build Layer Configuration
+# Copy this file to build/conf/bblayers.conf
+#
+
+# POKY_BBLAYERS_CONF_VERSION is increased each time build/conf/bblayers.conf
+# changes incompatibly
+POKY_BBLAYERS_CONF_VERSION = "2"
+
+BBPATH = "${TOPDIR}"
+BBFILES ?= ""
+
+# BSPDIR points to the project root (two levels up from build/conf/)
+BSPDIR := "${@os.path.abspath(os.path.dirname(d.getVar('FILE', True)) + '/../..')}"
+
+BBLAYERS ?= " \
+  ${BSPDIR}/sources/poky/meta \
+  ${BSPDIR}/sources/poky/meta-poky \
+  ${BSPDIR}/sources/poky/meta-yocto-bsp \
+  \
+  ${BSPDIR}/sources/meta-openembedded/meta-oe \
+  ${BSPDIR}/sources/meta-openembedded/meta-python \
+  ${BSPDIR}/sources/meta-openembedded/meta-networking \
+  ${BSPDIR}/sources/meta-openembedded/meta-perl \
+  ${BSPDIR}/sources/meta-openembedded/meta-filesystems \
+  \
+  ${BSPDIR}/sources/meta-virtualization \
+  \
+  ${BSPDIR}/sources/meta-arm/meta-arm \
+  ${BSPDIR}/sources/meta-arm/meta-arm-toolchain \
+  \
+  ${BSPDIR}/sources/meta-rockchip \
+  \
+  ${BSPDIR}/sources/meta-rauc \
+  \
+  ${BSPDIR}/meta-nanopi-zero2 \
+  ${BSPDIR}/sources/globalping-hwprobe/meta-jsdelivr \
+  "

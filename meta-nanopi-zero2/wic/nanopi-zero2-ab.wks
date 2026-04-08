@@ -1,0 +1,45 @@
+# Copyright (C) 2025
+# Released under the MIT license
+#
+# short-description: Create A/B disk image for NanoPi Zero2 (RK3528) with RAUC OTA support
+# long-description: Creates a disk image with dual rootfs partitions for A/B updates
+#
+# Disk layout for RK3528 with RAUC A/B support:
+#
+#   Partition   Start Sector    Size            Name        Flags
+#   loader1     64              3552K           loader1     (idbloader / U-Boot SPL)
+#   loader2     16384           4096K           loader2     (uboot.img - FIT image)
+#   rootfs-a    32768           2G              rootfs-a    legacy_boot (active slot)
+#   rootfs-b    auto            2G              rootfs-b    (inactive slot)
+#   persist     auto            50M             persist     (boot state, RAUC config)
+#   [docker partitions created dynamically by firstBoot.sh]
+#
+# Boot Selection Mechanism:
+#   - U-Boot scans partitions with legacy_boot flag first
+#   - Active slot has legacy_boot flag set (--active in WKS)
+#   - RAUC toggles legacy_boot flag to switch slots:
+#     parted -s /dev/mmcblk2 set 3 legacy_boot on/off
+#     parted -s /dev/mmcblk2 set 4 legacy_boot on/off
+#
+# Each rootfs partition contains its own /boot/extlinux/extlinux.conf
+# pointing to its own PARTLABEL (rootfs-a or rootfs-b)
+#
+
+# Bootloader partitions (unchanged from single-rootfs layout)
+part loader1   --offset 64s    --fixed-size 3552K --fstype=none --part-name loader1   --source rawcopy --sourceparams="file=idbloader.img"
+part loader2   --offset 16384s --fixed-size 4096K --fstype=none --part-name loader2   --source rawcopy --sourceparams="file=uboot.img"
+
+# Slot A - Active rootfs with legacy_boot flag
+# --active sets the GPT legacy_boot attribute that U-Boot looks for
+part /         --offset 32768s --fixed-size 3G --fstype=ext4 --label rootfs-a --part-name rootfs-a --active --source rootfs
+
+# Slot B - Inactive rootfs (populated by first RAUC update)
+# No --active flag, so no legacy_boot attribute
+part           --fixed-size 3G --fstype=ext4 --label rootfs-b --part-name rootfs-b
+
+# Persistent data partition (for boot state, RAUC status, etc.)
+part /persist  --fixed-size 50M --fstype=ext4 --label persist --part-name persist
+
+# Docker partitions are created dynamically by firstBoot.sh using remaining space
+
+bootloader --ptable gpt

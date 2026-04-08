@@ -1,0 +1,32 @@
+# NanoPi Zero2 fstab - read-only rootfs with persistent storage partition
+#
+# A/B Partition Layout (RAUC OTA support):
+#   p1: loader1 (U-Boot SPL)
+#   p2: loader2 (U-Boot FIT)
+#   p3: rootfs-a (Slot A) - active when legacy_boot flag set
+#   p4: rootfs-b (Slot B) - active when legacy_boot flag set
+#   p5: persist (50MB) - configuration files, RAUC boot state
+#   p6: docker - created dynamically at first boot
+#   p7: docker_persist - created dynamically at first boot
+#
+# /persist (LABEL=persist, 50MB): Configuration files - mounted RO by default
+#   Contains: /persist/jsdelivr-config/, /persist/container-overrides/, /persist/rauc/
+#   Remount RW to update: mount -o remount,rw /persist
+#
+# /docker_persist (LABEL=docker_persist): NOT in fstab - mounted by startWorld.sh
+#   Contains container volumes: /docker_persist/wireguard/, /docker_persist/speedtest/
+#
+# /var/lib/docker (LABEL=docker): NOT in fstab - mounted by startWorld.sh
+#   Contains Docker storage (images, containers, layers)
+
+/dev/root            /                    auto       defaults,ro           1  1
+proc                 /proc                proc       defaults              0  0
+devpts               /dev/pts             devpts     mode=0620,ptmxmode=0666,gid=5      0  0
+tmpfs                /run                 tmpfs      mode=0755,nodev,nosuid,strictatime 0  0
+tmpfs                /var/volatile        tmpfs      defaults              0  0
+
+# Persistent storage partition (50MB, mounted read-only for safety)
+# Using LABEL for device independence (works on both SD card and eMMC)
+# Contains: RAUC data, first boot flag, device identity, jsdelivr config
+# Scripts remount rw temporarily when writing, then remount ro
+LABEL=persist        /persist             ext4       defaults,ro           0  2
