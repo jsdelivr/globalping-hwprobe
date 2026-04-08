@@ -1,0 +1,36 @@
+From: Nuno Felicio < nuno.felicio@gmail.com>
+Date: Sun, 22 Dec 2024 00:00:00 +0000
+Subject: [PATCH] phy: rockchip: Fix missing Kconfig dependencies for samsung-dcphy
+
+The PHY_ROCKCHIP_SAMSUNG_DCPHY driver uses V4L2 subdev APIs including
+v4l2_subdev->entity member which only exists when CONFIG_MEDIA_CONTROLLER
+is enabled. Without proper Kconfig dependencies, disabling CONFIG_MEDIA_SUPPORT
+causes a build failure:
+
+  error: 'struct v4l2_subdev' has no member named 'entity'
+
+Add the missing dependencies to match similar drivers like
+PHY_ROCKCHIP_CSI2_DPHY and PHY_ROCKCHIP_MIPI_RX which correctly declare
+their VIDEO_DEV dependency and select VIDEO_V4L2_SUBDEV_API.
+
+Signed-off-by: Nuno Felicio < nuno.felicio@gmail.com>
+---
+ drivers/phy/rockchip/Kconfig | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/phy/rockchip/Kconfig b/drivers/phy/rockchip/Kconfig
+index 1234567..abcdefg 100644
+--- a/drivers/phy/rockchip/Kconfig
++++ b/drivers/phy/rockchip/Kconfig
+@@ -131,8 +131,11 @@ config PHY_ROCKCHIP_PCIE
+ 
+ config PHY_ROCKCHIP_SAMSUNG_DCPHY
+ 	tristate "Rockchip Samsung MIPI DCPHY driver"
++	depends on VIDEO_DEV
+ 	depends on (ARCH_ROCKCHIP || COMPILE_TEST) && OF
+ 	select GENERIC_PHY
+ 	select GENERIC_PHY_MIPI_DPHY
++	select VIDEO_V4L2_SUBDEV_API
++	select V4L2_FWNODE
+ 	help
+ 	  Enable this to support the Rockchip MIPI DCPHY with

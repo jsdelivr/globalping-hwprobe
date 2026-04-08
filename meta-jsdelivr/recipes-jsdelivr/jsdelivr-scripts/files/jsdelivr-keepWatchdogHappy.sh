@@ -1,7 +1,7 @@
 #!/bin/bash
 
 
-exec 5> /dev/watchdog1
+exec 5> /dev/watchdog0
 
 
 while [ 1 ];

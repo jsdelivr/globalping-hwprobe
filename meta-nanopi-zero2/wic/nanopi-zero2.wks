@@ -1,0 +1,28 @@
+# Copyright (C) 2025
+# Released under the MIT license
+#
+# short-description: Create a disk image suitable for booting NanoPi Zero2 (RK3528) from SD-card
+# long-description: Creates a disk image partitioned using GPT, suitable for RK3528
+#
+# Disk layout for RK3528 (FriendlyElec U-Boot 2017.09)
+# FriendlyElec's U-Boot uses a single FIT image (uboot.img) at loader2 position
+# that contains U-Boot + ATF + OP-TEE combined
+#
+# Fully read-only rootfs configuration - all volatile data in tmpfs (RAM)
+# Docker images and container data will NOT persist across reboots
+#
+#   Partition   Start Sector    Number of Sectors
+#   loader1     64              7104        (idbloader / U-Boot SPL)
+#   reserved    7168            8128        (reserved space)
+#   loader2     16384           8192        (uboot.img - FIT image with U-Boot+ATF+OP-TEE)
+#   root        32768           ~8388608    (read-only rootfs - 4GB, everything in tmpfs)
+#   persist     auto            ~102400     (persistent storage - 50MB, read-only by default, remount RW to update)
+#   docker      auto            (created at first boot - Docker storage)
+#   docker_persist auto         (created at first boot - Container volumes)
+
+part loader1   --offset 64s    --fixed-size 3552K --fstype=none --part-name loader1   --source rawcopy --sourceparams="file=idbloader.img"
+part loader2   --offset 16384s --fixed-size 4096K --fstype=none --part-name loader2   --source rawcopy --sourceparams="file=uboot.img"
+part /         --offset 32768s --size 4G --label rootfs  --active           --fstype=ext4 --part-name rootfs    --source rootfs
+part /persist  --size 50M --label persist --fstype=ext4 --part-name persist
+
+bootloader --ptable gpt

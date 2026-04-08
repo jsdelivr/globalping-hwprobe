@@ -13,11 +13,9 @@ do_install() {
 	CURL_CA_BUNDLE=${STAGING_DIR_NATIVE}/etc/ssl/certs/ca-certificates.crt
 	export CURL_CA_BUNDLE
 	rm -rf globalping-probe.frozen
-	skopeo --override-arch arm copy docker://globalping/globalping-probe:latest docker-archive:globalping-probe.frozen:globalping-probe
+	skopeo --override-arch arm64  copy  docker://globalping/globalping-probe:latest docker-archive:globalping-probe.frozen:globalping/globalping-probe
         install -d ${D}/JSDELIVR_BASE_CONTAINER
 	install -m 644 ${WORKDIR}/globalping-probe.frozen  ${D}/JSDELIVR_BASE_CONTAINER
-        #install -d ${D}/${bindir}
-	#install -m 0755 ${WORKDIR}/download-frozen-image-v2.sh  ${D}/${bindir}
 }
 
 

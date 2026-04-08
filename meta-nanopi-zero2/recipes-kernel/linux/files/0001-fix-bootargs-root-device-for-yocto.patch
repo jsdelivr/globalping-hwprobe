@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Yocto Builder <yocto@localhost>
+Date: Fri, 11 Oct 2025 00:00:00 +0000
+Subject: [PATCH] dts: rk3528: Remove root= from bootargs_ext, defer to
+ extlinux.conf
+
+Remove the root= parameter from device tree bootargs_ext. The root device
+will be specified in extlinux.conf instead, allowing different boot
+configurations for production (eMMC) and programmer (SD card) images.
+
+This prevents the boot race condition where PARTLABEL=rootfs would find
+eMMC partitions before SD card partitions during programmer boot, causing
+the wrong rootfs to be mounted.
+
+bootargs_ext now only contains filesystem options (rw, rootfstype, rootflags)
+which are appended to the root= specification from extlinux.conf.
+
+Signed-off-by: Yocto Builder <yocto@localhost>
+---
+ arch/arm64/boot/dts/rockchip/rk3528-nanopi-common.dtsi | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/rockchip/rk3528-nanopi-common.dtsi b/arch/arm64/boot/dts/rockchip/rk3528-nanopi-common.dtsi
+index 000000000000..111111111111 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3528-nanopi-common.dtsi
++++ b/arch/arm64/boot/dts/rockchip/rk3528-nanopi-common.dtsi
+@@ -15,7 +15,7 @@
+
+ 	chosen: chosen {
+ 		bootargs = "earlycon=uart8250,mmio32,0xff9f0000 console=ttyFIQ0 coherent_pool=1m";
+-		bootargs_ext = "root=/dev/mmcblk2p8 rw rootfstype=ext4 rootflags=discard";
++		bootargs_ext = "rw rootfstype=ext4 rootflags=discard";
+ 	};
+
+ 	aliases {
+--
+2.34.1

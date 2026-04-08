@@ -1,0 +1,19 @@
+[Unit]
+Description= JSDELIVR docker controller service
+After=network-online.target docker.socket firewalld.service
+Wants=network-online.target
+Requires=docker.socket
+
+[Service]
+Type=notify
+
+ExecStart=python3 /usr/bin/jsdelivr-docker-controller.py
+ExecReload=/bin/kill -s HUP $MAINPID
+
+# kill only the docker process, not all processes in the cgroup
+KillMode=process
+TimeoutSec=infinity
+
+
+[Install]
+WantedBy=multi-user.target
