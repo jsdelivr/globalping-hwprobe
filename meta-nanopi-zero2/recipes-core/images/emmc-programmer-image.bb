@@ -1,6 +1,8 @@
 require recipes-core/images/core-image-minimal.bb
 
+SUMMARY = "eMMC programmer image (full variant)"
 DESCRIPTION = "Minimal image for programming eMMC with LED feedback and bundled production image"
+HOMEPAGE = "https://github.com/jsdelivr/globalping-hwprobe"
 
 # Ensure core-image-minimal is built first (needed for production-image-bundle)
 do_rootfs[depends] += "core-image-minimal:do_image_complete"

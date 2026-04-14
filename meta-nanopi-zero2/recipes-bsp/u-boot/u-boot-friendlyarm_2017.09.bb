@@ -1,5 +1,7 @@
 SUMMARY = "FriendlyElec U-Boot for NanoPi Zero2"
 DESCRIPTION = "U-Boot from FriendlyElec's uboot-rockchip repository"
+HOMEPAGE = "https://github.com/friendlyarm/uboot-rockchip"
+SECTION = "bootloader"
 LICENSE = "GPL-2.0-or-later"
 LIC_FILES_CHKSUM = "file://Licenses/README;md5=a2c678cfd4a4d97135585cad908541c6"
 

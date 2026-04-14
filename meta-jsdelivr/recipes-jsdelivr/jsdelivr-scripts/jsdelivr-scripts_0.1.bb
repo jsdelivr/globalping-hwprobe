@@ -1,3 +1,6 @@
+SUMMARY = "Globalping probe runtime scripts"
+HOMEPAGE = "https://github.com/jsdelivr/globalping-hwprobe"
+SECTION = "scripts"
 
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
@@ -47,5 +50,5 @@ do_install() {
 }
 
 #Pack the path
-FILES_${PN} += "${bindir}"
+FILES:${PN} += "${bindir}"
 
