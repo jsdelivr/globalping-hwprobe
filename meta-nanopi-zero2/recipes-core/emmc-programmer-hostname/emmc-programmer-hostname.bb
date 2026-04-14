@@ -1,5 +1,7 @@
 SUMMARY = "eMMC Programmer hostname configuration"
 DESCRIPTION = "Sets hostname to emmc-programmer-XXXX where XXXX is 2 random hex bytes"
+HOMEPAGE = "https://github.com/jsdelivr/globalping-hwprobe"
+SECTION = "base"
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
@@ -13,7 +15,7 @@ SRC_URI = " \
 S = "${WORKDIR}"
 
 SYSTEMD_SERVICE:${PN} = "emmc-programmer-hostname.service"
-SYSTEMD_AUTO_ENABLE = "enable"
+SYSTEMD_AUTO_ENABLE:${PN} = "enable"
 
 do_install() {
     # Install the hostname script

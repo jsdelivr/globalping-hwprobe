@@ -1,5 +1,7 @@
-SUMMARY = "Netdata Monitoring Container - Frozen Docker Image"
-DESCRIPTION = "Provides the frozen Docker image for Netdata real-time system monitoring"
+SUMMARY = "netdata Container - Frozen Docker Image"
+DESCRIPTION = "Custom container: netdata/netdata:latest"
+HOMEPAGE = "https://github.com/jsdelivr/globalping-hwprobe"
+SECTION = "containers"
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
@@ -18,7 +20,7 @@ do_install() {
 	CURL_CA_BUNDLE=${STAGING_DIR_NATIVE}/etc/ssl/certs/ca-certificates.crt
 	export CURL_CA_BUNDLE
 
-	# Pull Netdata container image
+	# Pull container image
 	rm -rf netdata.frozen
 	skopeo --override-arch arm64 copy \
 		docker://netdata/netdata:latest \

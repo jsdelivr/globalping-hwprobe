@@ -1,5 +1,7 @@
 SUMMARY = "Pre-built U-Boot binaries for NanoPi Zero2"
 DESCRIPTION = "Pre-compiled U-Boot bootloader from FriendlyElec for RK3528, built outside Yocto"
+HOMEPAGE = "https://github.com/friendlyarm/uboot-rockchip"
+SECTION = "bootloader"
 LICENSE = "GPL-2.0-or-later"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/GPL-2.0-or-later;md5=fed54355545ffd980b814dab4a3b312c"
 

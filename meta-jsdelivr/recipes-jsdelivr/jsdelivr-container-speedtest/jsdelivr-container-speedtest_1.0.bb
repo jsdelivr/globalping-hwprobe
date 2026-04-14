@@ -1,5 +1,7 @@
 SUMMARY = "Speedtest Tracker Container - Frozen Docker Image"
 DESCRIPTION = "Provides the frozen Docker image for Speedtest Tracker internet speed testing"
+HOMEPAGE = "https://github.com/jsdelivr/globalping-hwprobe"
+SECTION = "containers"
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
