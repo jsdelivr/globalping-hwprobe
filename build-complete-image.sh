@@ -2,10 +2,17 @@
 #
 # Complete build script for NanoPi Zero2 Yocto image
 # This script orchestrates the entire build process:
-# 1. Build U-Boot from source (if binaries missing) - MUST be first for bitbake parsing
-# 2. Build Yocto SDK (if not already built)
-# 3. Rebuild U-Boot with Yocto SDK (optional, for consistency)
-# 4. Build final bootable image with WIC
+# 1. Add optional containers (if --add-container specified)
+# 2. Build U-Boot from source (if binaries missing) - MUST be first for bitbake parsing
+# 3. Build Yocto SDK (if not already built)
+# 4. Rebuild U-Boot with Yocto SDK (optional, for consistency)
+# 5. Build final bootable image with WIC
+#
+# Usage:
+#   ./build-complete-image.sh                          # builds with default containers (crowdsec, netdata, wireguard)
+#   ./build-complete-image.sh --add-container IMG:TAG  # builds with only the specified container(s)
+#   ./build-complete-image.sh --add-container lapsiufcg/suricata:v0.1 --cap NET_ADMIN,NET_RAW
+#   ./build-complete-image.sh --no-containers          # builds with globalping-probe only (no optional containers)
 #
 
 set -e
@@ -20,10 +27,87 @@ NC='\033[0m'
 # Save project directory
 PROJECT_DIR="$(pwd)"
 
+# =============================================================================
+# Parse --add-container arguments (pass through to add-container.sh)
+# =============================================================================
+ADD_CONTAINER_ARGS=()
+REMAINING_ARGS=()
+NO_CONTAINERS=0
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --add-container|--cap|--network|--ports|--memory|--priority|--description)
+            ADD_CONTAINER_ARGS+=("$1" "$2")
+            shift 2
+            ;;
+        --no-containers)
+            NO_CONTAINERS=1
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: $0 [OPTIONS]"
+            echo ""
+            echo "Build the complete NanoPi Zero2 image."
+            echo ""
+            echo "By default, includes these containers: crowdsec, netdata, wireguard."
+            echo "Use --add-container to override with custom containers, or --no-containers to skip all."
+            echo ""
+            echo "Options:"
+            echo "  --add-container IMAGE:TAG   Add a Docker container (overrides defaults)"
+            echo "  --no-containers             Build with globalping-probe only (no optional containers)"
+            echo "  --cap CAP1,CAP2             Linux capabilities (e.g., NET_ADMIN,NET_RAW)"
+            echo "  --network MODE              Docker network mode (default: host)"
+            echo "  --ports PORT1,PORT2         Published ports (e.g., 8080:80)"
+            echo "  --memory MB                 Required memory in MB (default: 100)"
+            echo "  --priority N                Startup priority, lower=first (default: 50)"
+            echo "  --description TEXT           Container description"
+            echo ""
+            echo "Examples:"
+            echo "  $0                                                    # default containers"
+            echo "  $0 --no-containers                                    # globalping-probe only"
+            echo "  $0 --add-container crowdsecurity/crowdsec:slim --cap NET_ADMIN,NET_RAW"
+            echo "  $0 --add-container netdata/netdata:latest --add-container linuxserver/wireguard:latest"
+            exit 0
+            ;;
+        *)
+            REMAINING_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
 echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}NanoPi Zero2 Complete Image Builder${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
+
+# Step 0a: Add containers
+if [ ${#ADD_CONTAINER_ARGS[@]} -gt 0 ]; then
+    echo -e "${GREEN}Adding containers to build...${NC}"
+    "$PROJECT_DIR/add-container.sh" "${ADD_CONTAINER_ARGS[@]}"
+    echo ""
+elif [ $NO_CONTAINERS -eq 0 ]; then
+    echo -e "${GREEN}No --add-container specified, adding default containers...${NC}"
+    "$PROJECT_DIR/add-container.sh" \
+        --add-container crowdsecurity/crowdsec:slim \
+            --cap NET_ADMIN,NET_RAW --priority 1 --memory 150 \
+            --volume /docker_persist/crowdsec/data:/var/lib/crowdsec/data \
+            --volume /docker_persist/crowdsec/config:/etc/crowdsec \
+        --add-container netdata/netdata:latest \
+            --cap SYS_PTRACE --priority 10 --memory 100 \
+            --volume /docker_persist/netdata/lib:/var/lib/netdata \
+            --volume /docker_persist/netdata/cache:/var/cache/netdata \
+            --volume /docker_persist/netdata/config:/etc/netdata \
+        --add-container linuxserver/wireguard:latest \
+            --cap NET_ADMIN,SYS_MODULE --priority 5 --memory 20 \
+            --volume /docker_persist/wireguard:/config \
+            --volume /lib/modules:/lib/modules:ro \
+            --env PUID=0 --env PGID=0 --env TZ=Etc/UTC
+    echo ""
+else
+    echo -e "${YELLOW}Skipping optional containers (--no-containers)${NC}"
+    echo ""
+fi
 
 # Check we're in the right directory
 if [ ! -d "sources/poky" ]; then
@@ -47,7 +131,7 @@ if [ ! -d "sources/rkbin" ]; then
     exit 1
 fi
 
-# Step 0: Check if U-Boot binaries exist - MUST exist before any bitbake
+# Step 0b: Check if U-Boot binaries exist - MUST exist before any bitbake
 # Bitbake parses ALL recipes before building, so U-Boot files must exist
 UBOOT_FILES_DIR="meta-nanopi-zero2/recipes-bsp/u-boot/files"
 DUMMY_UBOOT_CREATED=0
@@ -172,7 +256,8 @@ echo -e "${GREEN}✓ Source-built U-Boot binaries installed${NC}"
 echo -e "${GREEN}Step 5: Building final bootable images...${NC}"
 cd "$PROJECT_DIR"
 mkdir -p build/conf
-[ ! -f build/conf/local.conf ] && cp meta-jsdelivr/build_conf/local.conf build/conf/
+# Always refresh local.conf from template to pick up dynamically added containers
+cp meta-jsdelivr/build_conf/local.conf build/conf/
 [ ! -f build/conf/bblayers.conf ] && cp meta-jsdelivr/build_conf/bblayers.conf build/conf/
 source sources/poky/oe-init-build-env build
 
@@ -203,21 +288,25 @@ echo ""
 echo "Output files:"
 ls -lh build/tmp/deploy/images/nanopi-zero2/*-image*.wic 2>/dev/null || echo "WIC images in: build/tmp/deploy/images/nanopi-zero2/"
 echo ""
-echo -e "${GREEN}Production Image - Full (all containers enabled):${NC}"
+echo -e "${GREEN}Bundled containers:${NC}"
+echo "  - globalping-probe (mandatory)"
+"$PROJECT_DIR/add-container.sh" --list 2>/dev/null | grep "^  " | head -10 || true
+echo ""
+echo -e "${GREEN}Production Image (core-image-minimal):${NC}"
 echo "  sudo dd if=build/tmp/deploy/images/nanopi-zero2/core-image-minimal-nanopi-zero2.rootfs.wic of=/dev/sdX bs=4M status=progress && sync"
-echo "  (Includes: globalping-probe + CrowdSec IPS + optional containers)"
+echo "  (Includes: globalping-probe + any containers added via --add-container)"
 echo ""
 echo -e "${GREEN}Production Image - Base Only (globalping-probe only):${NC}"
 echo "  sudo dd if=build/tmp/deploy/images/nanopi-zero2/core-image-minimal-baseonly-nanopi-zero2.rootfs.wic of=/dev/sdX bs=4M status=progress && sync"
 echo "  (Includes: only base globalping-probe container, no optional containers)"
 echo ""
-echo -e "${GREEN}eMMC Programmer Image - Full (programs full image to eMMC):${NC}"
+echo -e "${GREEN}eMMC Programmer Image - Full (programs production image to eMMC):${NC}"
 echo "  sudo dd if=build/tmp/deploy/images/nanopi-zero2/emmc-programmer-image-nanopi-zero2.rootfs.wic of=/dev/sdX bs=4M status=progress && sync"
-echo "  (Flash to SD card, boot device, programs full image with CrowdSec)"
+echo "  (Flash to SD card, boot device, programs production image to eMMC)"
 echo ""
 echo -e "${GREEN}eMMC Programmer Image - Baseonly (programs minimal image to eMMC):${NC}"
 echo "  sudo dd if=build/tmp/deploy/images/nanopi-zero2/emmc-programmer-image-baseonly-nanopi-zero2.rootfs.wic of=/dev/sdX bs=4M status=progress && sync"
-echo "  (Flash to SD card, boot device, programs baseonly image without CrowdSec)"
+echo "  (Flash to SD card, boot device, programs baseonly image to eMMC)"
 echo ""
 echo -e "${GREEN}RAUC Update Bundle (for OTA updates):${NC}"
 RAUC_BUNDLE=$(ls -1 tmp/deploy/images/nanopi-zero2/rauc-update-bundle-nanopi-zero2*.raucb 2>/dev/null | grep -v '^l' | head -1)

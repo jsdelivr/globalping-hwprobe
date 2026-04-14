@@ -2,10 +2,43 @@
   "version": "1.0",
   "containers": [
     {
+      "name": "crowdsec",
+      "frozen_image": "crowdsec.frozen",
+      "docker_image": "crowdsecurity/crowdsec:slim",
+      "description": "Custom container: crowdsecurity/crowdsec:slim",
+      "default_enabled": false,
+      "startup_priority": 1,
+      "required_memory_mb": 150,
+      "network_mode": "host",
+      "restart_policy": "unless-stopped",
+      "ports": [],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/docker_persist/crowdsec/data",
+          "target": "/var/lib/crowdsec/data",
+          "readonly": false,
+          "create": true
+        },
+        {
+          "type": "bind",
+          "source": "/docker_persist/crowdsec/config",
+          "target": "/etc/crowdsec",
+          "readonly": false,
+          "create": true
+        }
+      ],
+      "capabilities": [
+        "NET_ADMIN",
+        "NET_RAW"
+      ],
+      "env": []
+    },
+    {
       "name": "netdata",
       "frozen_image": "netdata.frozen",
       "docker_image": "netdata/netdata:latest",
-      "description": "Real-time system and network monitoring",
+      "description": "Custom container: netdata/netdata:latest",
       "default_enabled": false,
       "startup_priority": 10,
       "required_memory_mb": 100,
@@ -15,27 +48,36 @@
       "volumes": [
         {
           "type": "bind",
-          "source": "/proc",
-          "target": "/host/proc",
-          "readonly": true,
-          "create": false
+          "source": "/docker_persist/netdata/lib",
+          "target": "/var/lib/netdata",
+          "readonly": false,
+          "create": true
         },
         {
           "type": "bind",
-          "source": "/sys",
-          "target": "/host/sys",
-          "readonly": true,
-          "create": false
+          "source": "/docker_persist/netdata/cache",
+          "target": "/var/cache/netdata",
+          "readonly": false,
+          "create": true
+        },
+        {
+          "type": "bind",
+          "source": "/docker_persist/netdata/config",
+          "target": "/etc/netdata",
+          "readonly": false,
+          "create": true
         }
       ],
-      "capabilities": ["SYS_PTRACE"],
-      "documentation": "Access web UI at http://device-ip:19999"
+      "capabilities": [
+        "SYS_PTRACE"
+      ],
+      "env": []
     },
     {
       "name": "wireguard",
       "frozen_image": "wireguard.frozen",
       "docker_image": "linuxserver/wireguard:latest",
-      "description": "VPN for secure remote management",
+      "description": "Custom container: linuxserver/wireguard:latest",
       "default_enabled": false,
       "startup_priority": 5,
       "required_memory_mb": 20,
@@ -48,51 +90,26 @@
           "source": "/docker_persist/wireguard",
           "target": "/config",
           "readonly": false,
-          "create": false
-        }
-      ],
-      "capabilities": ["NET_ADMIN", "SYS_MODULE"],
-      "documentation": "Configure in /docker_persist/wireguard/",
-      "notes": "Requires wireguard kernel module. SYS_MODULE capability allows container to load the module if not already loaded. Ensure kernel is built with CONFIG_WIREGUARD=m or CONFIG_WIREGUARD=y."
-    },
-    {
-      "name": "crowdsec",
-      "frozen_image": "crowdsec.frozen",
-      "docker_image": "crowdsecurity/crowdsec:slim",
-      "description": "CrowdSec IPS - Collaborative intrusion prevention",
-      "default_enabled": false,
-      "startup_priority": 1,
-      "required_memory_mb": 150,
-      "network_mode": "host",
-      "restart_policy": "unless-stopped",
-      "ports": [],
-      "volumes": [
-        {
-          "type": "volume",
-          "source": "crowdsec-data",
-          "target": "/var/lib/crowdsec/data",
-          "readonly": false,
-          "create": true
-        },
-        {
-          "type": "volume",
-          "source": "crowdsec-hub",
-          "target": "/etc/crowdsec/hub",
-          "readonly": false,
           "create": true
         },
         {
           "type": "bind",
-          "source": "/var/log",
-          "target": "/var/log",
+          "source": "/lib/modules",
+          "target": "/lib/modules",
           "readonly": true,
-          "create": false
+          "create": true
         }
       ],
-      "capabilities": ["NET_ADMIN", "NET_RAW"],
-      "documentation": "Monitors system logs and blocks malicious IPs. Check status: docker exec crowdsec cscli metrics",
-      "notes": "WARNING: /var/log on host is tmpfs (RAM-based), so logs are volatile and cleared on reboot. CrowdSec will only monitor logs from current boot session."
+      "capabilities": [
+        "NET_ADMIN",
+        "SYS_MODULE"
+      ],
+      "env": [
+        "PUID=0",
+        "PGID=0",
+        "TZ=Etc/UTC"
+      ]
     }
   ],
-  "notes": "This manifest describes available optional containers. Enable containers in /JSDELIVR_BASE_CONTAINER/config/enabled-containers.conf or in /persist/jsdelivr-config/enabled-containers.conf for persistent configuration."
+  "notes": "This manifest describes available optional containers. Containers are added dynamically via ./add-container.sh and loaded at boot by jsdelivr-container-loader.sh. Enable containers in /persist/jsdelivr-config/enabled-containers.conf for persistent configuration."
 }

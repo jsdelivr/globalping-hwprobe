@@ -44,122 +44,44 @@ is_container_enabled() {
     [ "$enabled" = "1" ]
 }
 
-# Parse JSON manifest (simple bash implementation)
+# Get a scalar field from the manifest for a specific container
 get_container_info() {
     local container_name="$1"
     local field="$2"
 
-    if [ ! -f "$MANIFEST_FILE" ]; then
-        return 1
-    fi
+    [ -f "$MANIFEST_FILE" ] || return 1
 
-    # Simple grep-based JSON parsing (works for simple structures)
-    grep -A 10 "\"name\": \"$container_name\"" "$MANIFEST_FILE" | \
-        grep "\"$field\"" | \
-        cut -d'"' -f4
+    jq -r --arg name "$container_name" --arg field "$field" \
+        '.containers[] | select(.name == $name) | .[$field] // empty' \
+        "$MANIFEST_FILE"
 }
 
-# Get array field from manifest (capabilities, ports, etc.)
+# Get an array field (one element per line) for a specific container
 get_container_array() {
     local container_name="$1"
     local field="$2"
 
-    if [ ! -f "$MANIFEST_FILE" ]; then
-        return 1
-    fi
+    [ -f "$MANIFEST_FILE" ] || return 1
 
-    # Extract array values - handles both single-line ["item1", "item2"] and multi-line formats
-    local section=""
-    section=$(grep -A 20 "\"name\": \"$container_name\"" "$MANIFEST_FILE" | grep -A 1 "\"$field\":")
-
-    # Check if array is on the same line as field (single-line format)
-    # Note: Use 'head -n 1' for BusyBox compatibility (not 'head -1')
-    if echo "$section" | head -n 1 | grep -q '\[.*\]'; then
-        # Single-line array like: "capabilities": ["SYS_PTRACE", "NET_ADMIN"]
-        echo "$section" | head -n 1 | \
-            sed 's/.*\[//' | sed 's/\].*//' | \
-            tr ',' '\n' | \
-            sed 's/^[[:space:]]*"//' | sed 's/"[[:space:]]*$//' | \
-            grep -v '^$'
-    else
-        # Multi-line array format
-        grep -A 20 "\"name\": \"$container_name\"" "$MANIFEST_FILE" | \
-            grep -A 10 "\"$field\":" | \
-            grep -E '^\s*"' | \
-            cut -d'"' -f2 | \
-            grep -v "^$field$"
-    fi
+    jq -r --arg name "$container_name" --arg field "$field" \
+        '.containers[] | select(.name == $name) | (.[$field] // []) | .[]' \
+        "$MANIFEST_FILE"
 }
 
 # Parse volumes from manifest JSON
-# Returns volume definitions in format: type|source|target|options
+# Emits one line per volume in format: type|source|target|readonly|create
 parse_volumes() {
     local container_name="$1"
 
-    if [ ! -f "$MANIFEST_FILE" ]; then
-        return 1
-    fi
+    [ -f "$MANIFEST_FILE" ] || return 1
 
-    # Extract volumes section for this container
-    local in_container=0
-    local in_volumes=0
-    local type="" source="" target="" readonly="false" create="false"
-
-    while IFS= read -r line; do
-        # Check if we're in the right container
-        if echo "$line" | grep -q "\"name\": \"$container_name\""; then
-            in_container=1
-        fi
-
-        # If we're in the container, look for volumes section
-        if [ $in_container -eq 1 ] && echo "$line" | grep -q '"volumes":'; then
-            in_volumes=1
-            continue
-        fi
-
-        # If we're in volumes, extract data until we hit the closing bracket
-        if [ $in_volumes -eq 1 ]; then
-            # Check for end of volumes array (line starting with ])
-            if echo "$line" | grep -q '^\s*\]'; then
-                in_volumes=0
-                break
-            fi
-
-            # Extract volume data
-            if echo "$line" | grep -q '"type"'; then
-                type=$(echo "$line" | cut -d'"' -f4)
-            fi
-            if echo "$line" | grep -q '"source"'; then
-                source=$(echo "$line" | cut -d'"' -f4)
-            fi
-            if echo "$line" | grep -q '"target"'; then
-                target=$(echo "$line" | cut -d'"' -f4)
-            fi
-            if echo "$line" | grep -q '"readonly"'; then
-                readonly=$(echo "$line" | cut -d':' -f2 | tr -d ' ,')
-            fi
-            if echo "$line" | grep -q '"create"'; then
-                create=$(echo "$line" | cut -d':' -f2 | tr -d ' ,')
-            fi
-
-            # When we hit closing brace of a volume object, output and reset
-            # Match }, or } at end of volume object (but not }] which ends the array)
-            if echo "$line" | grep -q '^\s*}' && ! echo "$line" | grep -q '^\s*\]'; then
-                if [ -n "$source" ] && [ -n "$target" ]; then
-                    echo "${type:-bind}|${source}|${target}|${readonly:-false}|${create:-false}"
-                fi
-                type=""; source=""; target=""; readonly="false"; create="false"
-            fi
-        fi
-
-        # Check if we've left the container section (only when not in volumes)
-        if [ $in_container -eq 1 ] && [ $in_volumes -eq 0 ] && echo "$line" | grep -q '^\s*},$'; then
-            break
-        fi
-    done < "$MANIFEST_FILE"
+    jq -r --arg name "$container_name" \
+        '.containers[] | select(.name == $name) | (.volumes // []) | .[] |
+         "\(.type // "bind")|\(.source)|\(.target)|\(.readonly // false)|\(.create // false)"' \
+        "$MANIFEST_FILE"
 }
 
-# Create Docker volumes if needed
+# Create Docker volumes and bind-mount source directories if needed
 create_volumes() {
     local container_name="$1"
 
@@ -168,20 +90,30 @@ create_volumes() {
     # Parse volumes and create if needed
     # Using pipe instead of process substitution for BusyBox/ash compatibility
     parse_volumes "$container_name" | while IFS='|' read -r type source target readonly create; do
-        if [ "$type" = "volume" ] && [ "$create" = "true" ]; then
-            # Check if volume exists
-            if ! docker volume inspect "$source" > /dev/null 2>&1; then
-                log "Creating Docker volume: $source"
-                docker volume create "$source" > /dev/tty3 2>&1
-                if [ $? -eq 0 ]; then
-                    log "Successfully created volume $source"
-                else
-                    log "ERROR: Failed to create volume $source"
+        [ "$create" = "true" ] || continue
+
+        case "$type" in
+            volume)
+                if ! docker volume inspect "$source" > /dev/null 2>&1; then
+                    log "Creating Docker volume: $source"
+                    if docker volume create "$source" > /dev/tty3 2>&1; then
+                        log "Successfully created volume $source"
+                    else
+                        log "ERROR: Failed to create volume $source"
+                    fi
                 fi
-            else
-                log "Volume $source already exists"
-            fi
-        fi
+                ;;
+            bind|"")
+                if [ ! -d "$source" ]; then
+                    log "Creating bind source directory: $source"
+                    if mkdir -p "$source" 2>/dev/tty3; then
+                        log "Successfully created $source"
+                    else
+                        log "ERROR: Failed to create $source"
+                    fi
+                fi
+                ;;
+        esac
     done
 }
 
@@ -221,6 +153,16 @@ build_port_args() {
     get_container_array "$container_name" "ports" | while IFS= read -r port; do
         [ -z "$port" ] && continue
         printf " -p %s" "$port"
+    done
+}
+
+# Build environment variable arguments for docker run (from manifest "env" array)
+build_env_args() {
+    local container_name="$1"
+
+    get_container_array "$container_name" "env" | while IFS= read -r kv; do
+        [ -z "$kv" ] && continue
+        printf ' -e %s' "$kv"
     done
 }
 
@@ -321,6 +263,7 @@ start_optional_containers() {
         local volume_args=$(build_volume_args "$container_name")
         local cap_args=$(build_capability_args "$container_name")
         local port_args=$(build_port_args "$container_name")
+        local manifest_env_args=$(build_env_args "$container_name")
 
         # Load environment file if exists
         local env_file="${CONFIG_DIR}/${container_name}.env"
@@ -346,6 +289,7 @@ start_optional_containers() {
             $cap_args \
             $port_args \
             $env_args \
+            $manifest_env_args \
             "$docker_image" > /dev/tty3 2>&1
 
         if [ $? -eq 0 ]; then
@@ -426,6 +370,7 @@ list_optional_containers() {
 export -f log
 export -f load_config
 export -f is_container_enabled
+export -f build_env_args
 export -f load_optional_containers
 export -f start_optional_containers
 export -f monitor_optional_containers
