@@ -101,6 +101,66 @@ After the build is done, the following images will be available in `build/tmp/de
  - `emmc-programmer-image-nanopi-zero2.rootfs.wic` - Programmer image (flash to SD card)
  - `rauc-update-bundle-nanopi-zero2-*.raucb` - RAUC bundle (for OTA updates)
 
+## Bundling optional containers
+
+By default `./build-complete-image.sh` produces an image with only the mandatory `globalping-probe` container. Extra containers can be bundled into the firmware with the repeatable `--add-container` flag. Each `--add-container` is followed by its own options (`--cap`, `--priority`, `--memory`, `--volume`, `--env`, ...) until the next `--add-container`.
+
+Bind-mount sources under `/docker_persist/...` are created automatically at first boot, so the data survives RAUC A/B rootfs updates.
+
+### CrowdSec (IPS)
+
+```
+./build-complete-image.sh \
+    --add-container crowdsecurity/crowdsec:slim \
+        --cap NET_ADMIN,NET_RAW --priority 1 --memory 150 \
+        --volume /docker_persist/crowdsec/data:/var/lib/crowdsec/data \
+        --volume /docker_persist/crowdsec/config:/etc/crowdsec
+```
+
+### Netdata (monitoring)
+
+```
+./build-complete-image.sh \
+    --add-container netdata/netdata:latest \
+        --cap SYS_PTRACE --priority 10 --memory 100 \
+        --volume /docker_persist/netdata/lib:/var/lib/netdata \
+        --volume /docker_persist/netdata/cache:/var/cache/netdata \
+        --volume /docker_persist/netdata/config:/etc/netdata
+```
+
+### WireGuard (VPN)
+
+```
+./build-complete-image.sh \
+    --add-container linuxserver/wireguard:latest \
+        --cap NET_ADMIN,SYS_MODULE --priority 5 --memory 20 \
+        --volume /docker_persist/wireguard:/config \
+        --volume /lib/modules:/lib/modules:ro \
+        --env PUID=0 --env PGID=0 --env TZ=Etc/UTC
+```
+
+### All three at once
+
+```
+./build-complete-image.sh \
+    --add-container crowdsecurity/crowdsec:slim \
+        --cap NET_ADMIN,NET_RAW --priority 1 --memory 150 \
+        --volume /docker_persist/crowdsec/data:/var/lib/crowdsec/data \
+        --volume /docker_persist/crowdsec/config:/etc/crowdsec \
+    --add-container netdata/netdata:latest \
+        --cap SYS_PTRACE --priority 10 --memory 100 \
+        --volume /docker_persist/netdata/lib:/var/lib/netdata \
+        --volume /docker_persist/netdata/cache:/var/cache/netdata \
+        --volume /docker_persist/netdata/config:/etc/netdata \
+    --add-container linuxserver/wireguard:latest \
+        --cap NET_ADMIN,SYS_MODULE --priority 5 --memory 20 \
+        --volume /docker_persist/wireguard:/config \
+        --volume /lib/modules:/lib/modules:ro \
+        --env PUID=0 --env PGID=0 --env TZ=Etc/UTC
+```
+
+Bundled containers are enabled by default (`ENABLE_<NAME>=1` is written into `enabled-containers.conf` at build time). To disable one on a running probe, copy `/etc/jsdelivr-optional-containers/enabled-containers.conf` to `/persist/jsdelivr-config/enabled-containers.conf`, flip the flag to `0`, and reboot.
+
 ## Flashing
 
 #### eMMC Programmer (recommended)

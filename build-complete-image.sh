@@ -9,10 +9,11 @@
 # 5. Build final bootable image with WIC
 #
 # Usage:
-#   ./build-complete-image.sh                          # builds with default containers (crowdsec, netdata, wireguard)
-#   ./build-complete-image.sh --add-container IMG:TAG  # builds with only the specified container(s)
+#   ./build-complete-image.sh                          # builds with globalping-probe only (no optional containers)
+#   ./build-complete-image.sh --add-container IMG:TAG  # builds with the specified optional container(s)
 #   ./build-complete-image.sh --add-container lapsiufcg/suricata:v0.1 --cap NET_ADMIN,NET_RAW
-#   ./build-complete-image.sh --no-containers          # builds with globalping-probe only (no optional containers)
+#
+# See README.md for concrete invocations of crowdsec, netdata, and wireguard.
 #
 
 set -e
@@ -32,41 +33,43 @@ PROJECT_DIR="$(pwd)"
 # =============================================================================
 ADD_CONTAINER_ARGS=()
 REMAINING_ARGS=()
-NO_CONTAINERS=0
+FIRMWARE_VERSION=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --add-container|--cap|--network|--ports|--memory|--priority|--description)
+        --add-container|--cap|--network|--ports|--memory|--priority|--description|--volume|--env)
             ADD_CONTAINER_ARGS+=("$1" "$2")
             shift 2
             ;;
-        --no-containers)
-            NO_CONTAINERS=1
-            shift
+        --firmware-version)
+            FIRMWARE_VERSION="$2"
+            shift 2
             ;;
         -h|--help)
             echo "Usage: $0 [OPTIONS]"
             echo ""
             echo "Build the complete NanoPi Zero2 image."
             echo ""
-            echo "By default, includes these containers: crowdsec, netdata, wireguard."
-            echo "Use --add-container to override with custom containers, or --no-containers to skip all."
+            echo "By default only the mandatory globalping-probe container is included."
+            echo "Use --add-container (repeatable) to bundle additional optional containers."
+            echo "See README.md for crowdsec/netdata/wireguard invocations."
             echo ""
             echo "Options:"
-            echo "  --add-container IMAGE:TAG   Add a Docker container (overrides defaults)"
-            echo "  --no-containers             Build with globalping-probe only (no optional containers)"
+            echo "  --add-container IMAGE:TAG   Add a Docker container (repeatable)"
+            echo "  --firmware-version VER      Set GP_HOST_FIRMWARE in jsdelivr-startWorld.sh (e.g. v5.0.2)"
             echo "  --cap CAP1,CAP2             Linux capabilities (e.g., NET_ADMIN,NET_RAW)"
             echo "  --network MODE              Docker network mode (default: host)"
             echo "  --ports PORT1,PORT2         Published ports (e.g., 8080:80)"
             echo "  --memory MB                 Required memory in MB (default: 100)"
             echo "  --priority N                Startup priority, lower=first (default: 50)"
-            echo "  --description TEXT           Container description"
+            echo "  --description TEXT          Container description"
+            echo "  --volume SRC:TGT[:ro]       Bind mount (repeatable, per container)"
+            echo "  --env KEY=VALUE             Environment variable (repeatable, per container)"
             echo ""
             echo "Examples:"
-            echo "  $0                                                    # default containers"
-            echo "  $0 --no-containers                                    # globalping-probe only"
+            echo "  $0                                                    # globalping-probe only"
             echo "  $0 --add-container crowdsecurity/crowdsec:slim --cap NET_ADMIN,NET_RAW"
-            echo "  $0 --add-container netdata/netdata:latest --add-container linuxserver/wireguard:latest"
+            echo "  $0 --firmware-version v9.0.1"
             exit 0
             ;;
         *)
@@ -81,31 +84,30 @@ echo -e "${BLUE}NanoPi Zero2 Complete Image Builder${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
-# Step 0a: Add containers
+# Step 0a: Add containers (only if requested)
 if [ ${#ADD_CONTAINER_ARGS[@]} -gt 0 ]; then
     echo -e "${GREEN}Adding containers to build...${NC}"
     "$PROJECT_DIR/add-container.sh" "${ADD_CONTAINER_ARGS[@]}"
     echo ""
-elif [ $NO_CONTAINERS -eq 0 ]; then
-    echo -e "${GREEN}No --add-container specified, adding default containers...${NC}"
-    "$PROJECT_DIR/add-container.sh" \
-        --add-container crowdsecurity/crowdsec:slim \
-            --cap NET_ADMIN,NET_RAW --priority 1 --memory 150 \
-            --volume /docker_persist/crowdsec/data:/var/lib/crowdsec/data \
-            --volume /docker_persist/crowdsec/config:/etc/crowdsec \
-        --add-container netdata/netdata:latest \
-            --cap SYS_PTRACE --priority 10 --memory 100 \
-            --volume /docker_persist/netdata/lib:/var/lib/netdata \
-            --volume /docker_persist/netdata/cache:/var/cache/netdata \
-            --volume /docker_persist/netdata/config:/etc/netdata \
-        --add-container linuxserver/wireguard:latest \
-            --cap NET_ADMIN,SYS_MODULE --priority 5 --memory 20 \
-            --volume /docker_persist/wireguard:/config \
-            --volume /lib/modules:/lib/modules:ro \
-            --env PUID=0 --env PGID=0 --env TZ=Etc/UTC
-    echo ""
 else
-    echo -e "${YELLOW}Skipping optional containers (--no-containers)${NC}"
+    echo -e "${YELLOW}No --add-container specified — building with globalping-probe only${NC}"
+    echo -e "${YELLOW}(See README.md to bundle crowdsec, netdata, or wireguard.)${NC}"
+    echo ""
+fi
+
+# Step 0c: Apply firmware version if requested
+if [ -n "$FIRMWARE_VERSION" ]; then
+    STARTWORLD="$PROJECT_DIR/meta-jsdelivr/recipes-jsdelivr/jsdelivr-scripts/files/jsdelivr-startWorld.sh"
+    if [ ! -f "$STARTWORLD" ]; then
+        echo -e "${RED}Error: $STARTWORLD not found${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}Setting GP_HOST_FIRMWARE=${FIRMWARE_VERSION}${NC}"
+    sed -i -E "s|^export GP_HOST_FIRMWARE=.*|export GP_HOST_FIRMWARE=${FIRMWARE_VERSION}|" "$STARTWORLD"
+    if ! grep -q "^export GP_HOST_FIRMWARE=${FIRMWARE_VERSION}$" "$STARTWORLD"; then
+        echo -e "${RED}Error: failed to update GP_HOST_FIRMWARE in $STARTWORLD${NC}"
+        exit 1
+    fi
     echo ""
 fi
 

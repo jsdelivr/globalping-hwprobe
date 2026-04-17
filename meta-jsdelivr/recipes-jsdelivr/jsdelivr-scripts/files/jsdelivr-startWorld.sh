@@ -13,7 +13,7 @@ fi
 
 export GP_HOST_HW=true
 export GP_HOST_DEVICE=v2
-export GP_HOST_FIRMWARE=v5.0.1
+export GP_HOST_FIRMWARE=18.0.0.1
 
 # Docker read-only mode configuration
 # Default: false (--read-only flag NOT used)
