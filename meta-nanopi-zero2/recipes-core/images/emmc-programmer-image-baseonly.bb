@@ -17,13 +17,12 @@ IMAGE_INSTALL += "u-boot-extlinux-programmer"
 # Remove unnecessary packages to minimize size
 IMAGE_INSTALL:remove = "docker tini iptables skopeo"
 IMAGE_INSTALL:remove = "jsdelivr-service jsdelivr-scripts jsdelivr-configure jsdelivr-basecontainer"
-IMAGE_INSTALL:remove += "jsdelivr-container-manager jsdelivr-optional-containers"
-IMAGE_INSTALL:remove += "jsdelivr-container-crowdsec jsdelivr-container-netdata jsdelivr-container-wireguard"
+IMAGE_INSTALL:remove = "jsdelivr-container-manager jsdelivr-optional-containers jsdelivr-container-crowdsec jsdelivr-container-netdata jsdelivr-container-wireguard"
 IMAGE_INSTALL:remove = "python3-core python3-flask"
 IMAGE_INSTALL:remove = "strace htop mc lsof nano jq"
 # RAUC OTA services must not run on programmer image - rauc-mark-good validates
 # Docker (not installed here) and triggers reboot -f on failure, causing reboot loops
-IMAGE_INSTALL:remove += "rauc rauc-handlers"
+IMAGE_INSTALL:remove = "rauc rauc-handlers"
 
 # Keep essential tools
 # xz is required for decompressing production.wic.xz (handles >4GB files correctly)
