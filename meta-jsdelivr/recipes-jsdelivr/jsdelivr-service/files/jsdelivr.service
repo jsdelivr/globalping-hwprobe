@@ -15,7 +15,9 @@ ExecReload=/bin/kill -s HUP $MAINPID
 # kill only the docker process, not all processes in the cgroup
 KillMode=process
 TimeoutSec=infinity
-# restart the docker process if it exits prematurely
+# restart if the orchestrator exits unexpectedly
+Restart=on-failure
+RestartSec=5s
 
 [Install]
 WantedBy=multi-user.target

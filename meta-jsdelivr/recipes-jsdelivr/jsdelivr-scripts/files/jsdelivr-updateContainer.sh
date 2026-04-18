@@ -19,7 +19,8 @@ if [ -b /dev/sda1 ]; then
        echo 50 >   /sys/class/leds/user_led/delay_on
        echo 50 >   /sys/class/leds/user_led/delay_off
 
-       docker stop $(docker ps -a -q)
+       CONTAINERS=$(docker ps -aq 2>/dev/null)
+       [ -n "$CONTAINERS" ] && docker stop $CONTAINERS
 
        # Retry docker pull with backoff (network may not be ready)
        PULL_OK=0
@@ -32,11 +33,11 @@ if [ -b /dev/sda1 ]; then
            echo "Pull failed, waiting $((ATTEMPT * 10))s before retry" > /dev/tty4
            sleep $((ATTEMPT * 10))
        done
-       rm /tmp/updateFlag/JSDELIVR.UPD
 
        if [ "$PULL_OK" -eq 0 ]; then
-           echo "ERROR: All pull attempts failed for :latest, skipping reboot" > /dev/tty4
+           echo "ERROR: All pull attempts failed for :latest, leaving flag for next boot retry" > /dev/tty4
        else
+           rm /tmp/updateFlag/JSDELIVR.UPD
            sync
 
            reboot
@@ -52,12 +53,10 @@ if [ -b /dev/sda1 ]; then
        echo 50 >   /sys/class/leds/user_led/delay_on
        echo 50 >   /sys/class/leds/user_led/delay_off
 
-       rm /tmp/updateFlag/JSDELIVR-DEV.UPD
-       sync
-
        echo "Starting container update process" > /dev/tty4
 
-       docker stop $(docker ps -a -q)
+       CONTAINERS=$(docker ps -aq 2>/dev/null)
+       [ -n "$CONTAINERS" ] && docker stop $CONTAINERS
 
        # Retry docker pull with backoff (network may not be ready)
        PULL_OK=0
@@ -71,8 +70,11 @@ if [ -b /dev/sda1 ]; then
            sleep $((ATTEMPT * 10))
        done
        if [ "$PULL_OK" -eq 0 ]; then
-           echo "ERROR: All pull attempts failed for :dev, skipping reboot" > /dev/tty4
+           echo "ERROR: All pull attempts failed for :dev, leaving flag for next boot retry" > /dev/tty4
        else
+           rm /tmp/updateFlag/JSDELIVR-DEV.UPD
+           sync
+
            reboot
            echo "1" > /dev/watchdog
            while :; do  sleep 2; done
@@ -85,19 +87,22 @@ if [ -b /dev/sda1 ]; then
    if [ -f /tmp/updateFlag/JSDELIVR.RESET ]; then
       echo "Erase container update" > /dev/tty4
 
-      docker stop $(docker ps -a -q)
+      CONTAINERS=$(docker ps -aq 2>/dev/null)
+      [ -n "$CONTAINERS" ] && docker stop $CONTAINERS
       systemctl stop docker
 
-      if ! umount /var/lib/docker; then
-          echo "ERROR: Failed to unmount /var/lib/docker" > /dev/tty4
-          exit 1
+      if grep -q " /var/lib/docker " /proc/mounts; then
+          if ! umount /var/lib/docker; then
+              echo "ERROR: Failed to unmount /var/lib/docker" > /dev/tty4
+              exit 1
+          fi
       fi
 
       # Reset Docker storage (p6=docker) - NOT p5 which is persist
       # A/B layout: p3=rootfs-a, p4=rootfs-b, p5=persist, p6=docker, p7=docker_persist
       DOCKER_PART="/dev/disk/by-label/docker"
       if [ -b "$DOCKER_PART" ]; then
-          if ! mkfs.ext4 -F "$DOCKER_PART"; then
+          if ! mkfs.ext4 -F -L docker "$DOCKER_PART"; then
               echo "ERROR: Failed to format docker partition" > /dev/tty4
               exit 1
           fi
@@ -116,7 +121,15 @@ if [ -b /dev/sda1 ]; then
       systemctl start docker
       sleep 5
 
-      cat /JSDELIVR_BASE_CONTAINER/globalping-probe.frozen | /usr/bin/docker load > /dev/tty3
+      # Load frozen image. Warn but proceed on failure — startWorld.sh's
+      # init_docker_repo path will retry the load on next boot.
+      if [ -s /JSDELIVR_BASE_CONTAINER/globalping-probe.frozen ]; then
+          if ! /usr/bin/docker load < /JSDELIVR_BASE_CONTAINER/globalping-probe.frozen > /dev/tty3; then
+              echo "WARNING: docker load failed; startWorld.sh will reinit on next boot" > /dev/tty4
+          fi
+      else
+          echo "WARNING: frozen container missing; startWorld.sh will reinit on next boot" > /dev/tty4
+      fi
 
       sleep 5
 

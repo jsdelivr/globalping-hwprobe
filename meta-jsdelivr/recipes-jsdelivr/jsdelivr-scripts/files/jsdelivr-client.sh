@@ -15,6 +15,22 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
+# curl wrapper with sane timeouts — avoids hung CLI on unreachable controller
+api() {
+    curl --connect-timeout 5 --max-time 30 -sS "$@"
+}
+
+# Parse JSON status field from a response string. Echoes the value (or empty).
+json_status() {
+    echo "$1" | python3 -c "
+import sys, json
+try:
+    print(json.load(sys.stdin).get('status', ''))
+except Exception:
+    pass
+" 2>/dev/null
+}
+
 print_usage() {
     cat << EOF
 Usage: $0 [OPTIONS] COMMAND [ARGS]
@@ -98,9 +114,7 @@ shift
 case "$COMMAND" in
     containers)
         echo -e "${BOLD}Docker Containers:${NC}\n"
-        response=$(curl -s "${BASE_URL}/containers")
-
-        if [ $? -ne 0 ]; then
+        if ! response=$(api "${BASE_URL}/containers"); then
             echo -e "${RED}ERROR: Cannot connect to ${BASE_URL}${NC}"
             exit 1
         fi
@@ -143,7 +157,7 @@ except:
         fi
 
         echo -e "${BOLD}Logs for ${container}:${NC}\n"
-        curl -s "$url"
+        api "$url"
         ;;
 
     start)
@@ -155,9 +169,9 @@ except:
             exit 1
         fi
 
-        response=$(curl -s -X POST "${BASE_URL}/containers/${container}/start")
+        response=$(api -X POST "${BASE_URL}/containers/${container}/start")
 
-        if echo "$response" | grep -q '"status":"success"'; then
+        if [ "$(json_status "$response")" = "success" ]; then
             echo -e "${GREEN}✓ Container '${container}' started successfully${NC}"
             echo "$response" | python3 -c "
 import sys, json
@@ -179,9 +193,9 @@ print(f\"Container ID: {data.get('container_id', 'N/A')}\")
             exit 1
         fi
 
-        response=$(curl -s -X POST "${BASE_URL}/containers/${container}/stop")
+        response=$(api -X POST "${BASE_URL}/containers/${container}/stop")
 
-        if echo "$response" | grep -q '"status":"success"'; then
+        if [ "$(json_status "$response")" = "success" ]; then
             echo -e "${YELLOW}✓ Container '${container}' stopped${NC}"
             echo "$response" | python3 -c "
 import sys, json
@@ -196,7 +210,7 @@ print(f\"Container ID: {data.get('container_id', 'N/A')}\")
 
     settings)
         echo -e "${BOLD}Application Settings:${NC}\n"
-        curl -s "${BASE_URL}/settings" | python3 -c "
+        api "${BASE_URL}/settings" | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
@@ -226,7 +240,7 @@ except:
             exit 1
         fi
 
-        curl -s "${BASE_URL}/settings/${setting_name}" | python3 -c "
+        api "${BASE_URL}/settings/${setting_name}" | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
@@ -261,15 +275,15 @@ except:
         # URL encode the value (pipe via stdin to avoid shell interpolation into Python)
         encoded_value=$(printf '%s' "$value" | python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.stdin.read()))")
 
-        response=$(curl -s -X PUT "${BASE_URL}/settings/${setting_name}/${encoded_value}")
+        response=$(api -X PUT "${BASE_URL}/settings/${setting_name}/${encoded_value}")
 
-        if echo "$response" | grep -q '"status":"success"'; then
+        if [ "$(json_status "$response")" = "success" ]; then
             echo -e "${GREEN}✓ Setting '${setting_name}' updated successfully${NC}"
             echo "$response" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 value = data.get('value')
-name = data.get('setting_name')
+name = data.get('setting_name') or ''
 
 # Hide passwords
 if 'password' in name.lower() and value:
@@ -286,9 +300,9 @@ print(f'New value: {display_value}')
         ;;
 
     health)
-        response=$(curl -s "${BASE_URL}/health")
+        response=$(api "${BASE_URL}/health")
 
-        if echo "$response" | grep -q '"status":"healthy"'; then
+        if [ "$(json_status "$response")" = "healthy" ]; then
             echo -e "${GREEN}✓ API is healthy${NC}"
         else
             echo -e "${RED}✗ API health check failed${NC}"
