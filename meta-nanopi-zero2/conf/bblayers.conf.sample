@@ -33,6 +33,6 @@ BBLAYERS ?= " \
   \
   ${BSPDIR}/sources/meta-rauc \
   \
-  ${BSPDIR}/meta-nanopi-zero2 \
-  ${BSPDIR}/sources/globalping-hwprobe/meta-jsdelivr \
+  ${BSPDIR}/sources/meta-nanopi-zero2 \
+  ${BSPDIR}/sources/meta-jsdelivr \
   "

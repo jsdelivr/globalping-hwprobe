@@ -9,7 +9,7 @@ require recipes-bsp/u-boot/u-boot.inc
 
 DEPENDS += "dtc-native bc-native bison-native flex-native"
 
-SRCREV = "${AUTOREV}"
+SRCREV = "44f011c4ba9b543cf5e29305ab22c2b2e75f5d10"
 SRC_URI = "git://github.com/friendlyarm/uboot-rockchip.git;protocol=https;branch=nanopi5-v2017.09"
 
 S = "${WORKDIR}/git"

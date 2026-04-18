@@ -35,3 +35,5 @@ do_install() {
 }
 
 FILES:${PN} += "${bindir}"
+
+RDEPENDS:${PN} += "python3-core python3-flask"

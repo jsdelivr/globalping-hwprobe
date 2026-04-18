@@ -258,8 +258,8 @@ except:
             exit 1
         fi
 
-        # URL encode the value
-        encoded_value=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$value'))")
+        # URL encode the value (pipe via stdin to avoid shell interpolation into Python)
+        encoded_value=$(printf '%s' "$value" | python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.stdin.read()))")
 
         response=$(curl -s -X PUT "${BASE_URL}/settings/${setting_name}/${encoded_value}")
 
