@@ -88,16 +88,28 @@ if [ -b /dev/sda1 ]; then
       docker stop $(docker ps -a -q)
       systemctl stop docker
 
-      umount /var/lib/docker
+      if ! umount /var/lib/docker; then
+          echo "ERROR: Failed to unmount /var/lib/docker" > /dev/tty4
+          exit 1
+      fi
 
       # Reset Docker storage (p6=docker) - NOT p5 which is persist
       # A/B layout: p3=rootfs-a, p4=rootfs-b, p5=persist, p6=docker, p7=docker_persist
       DOCKER_PART="/dev/disk/by-label/docker"
       if [ -b "$DOCKER_PART" ]; then
-          mkfs.ext4 -F "$DOCKER_PART"
+          if ! mkfs.ext4 -F "$DOCKER_PART"; then
+              echo "ERROR: Failed to format docker partition" > /dev/tty4
+              exit 1
+          fi
+      else
+          echo "ERROR: Docker partition not found" > /dev/tty4
+          exit 1
       fi
 
-      mount "$DOCKER_PART" /var/lib/docker
+      if ! mount "$DOCKER_PART" /var/lib/docker; then
+          echo "ERROR: Failed to mount docker partition" > /dev/tty4
+          exit 1
+      fi
 
       rm /tmp/updateFlag/JSDELIVR.RESET
 

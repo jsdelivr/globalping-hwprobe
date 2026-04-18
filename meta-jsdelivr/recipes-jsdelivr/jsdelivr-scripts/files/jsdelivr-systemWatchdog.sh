@@ -11,9 +11,16 @@ BOOT_READY_FLAG="/tmp/.jsdelivr_boot_ready"
 # Wait for boot to complete before starting watchdog counter
 # This prevents premature recovery during normal boot sequence
 echo "Waiting for boot ready flag..." > /dev/tty2
+BOOT_READY_TIMEOUT=300
+BOOT_READY_WAITED=0
 while [ ! -f "$BOOT_READY_FLAG" ]; do
     echo "1" > /dev/watchdog0 2>/dev/null || true
     sleep 1
+    BOOT_READY_WAITED=$((BOOT_READY_WAITED+1))
+    if [ "$BOOT_READY_WAITED" -ge "$BOOT_READY_TIMEOUT" ]; then
+        echo "Boot never became ready after ${BOOT_READY_TIMEOUT}s; stopping watchdog keepalives" > /dev/tty2
+        break
+    fi
 done
 echo "Boot ready, starting watchdog monitoring" > /dev/tty2
 
