@@ -9,8 +9,6 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 # We need the WIC file from the deploy directory
 do_install[depends] = "core-image-minimal-baseonly:do_image_complete"
 
-DEPLOY_DIR_IMAGE = "${TOPDIR}/tmp/deploy/images/${MACHINE}"
-
 do_install() {
     install -d ${D}/opt/images
 
@@ -35,7 +33,12 @@ do_install() {
         echo "Production Image: core-image-minimal-baseonly" > ${D}/opt/images/production.info
         echo "Variant: Base Only (globalping-probe only, no optional containers)" >> ${D}/opt/images/production.info
         echo "Machine: ${MACHINE}" >> ${D}/opt/images/production.info
-        echo "Build Date: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> ${D}/opt/images/production.info
+        if [ -n "${SOURCE_DATE_EPOCH}" ]; then
+            BUILD_DATE=$(date -u -d "@${SOURCE_DATE_EPOCH}" '+%Y-%m-%d %H:%M:%S UTC')
+        else
+            BUILD_DATE=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+        fi
+        echo "Build Date: ${BUILD_DATE}" >> ${D}/opt/images/production.info
         echo "Distro: ${DISTRO} ${DISTRO_VERSION}" >> ${D}/opt/images/production.info
         echo "Image Size: ${WIC_SIZE_MB} MB" >> ${D}/opt/images/production.info
         # Store exact byte size for verification (xz handles >4GB but we store for safety)
