@@ -21,7 +21,13 @@ docker stop $(docker ps -a -q)
 
 echo "Initiate image download" > /dev/tty5
 
-docker pull globalping/globalping-probe:latest
+if ! docker pull globalping/globalping-probe:latest; then
+    echo "Image download FAILED" > /dev/tty5
+    killall -CONT jsdelivr-mandatoryReboot.sh
+    killall -CONT jsdelivr-systemMonitor.sh
+    killall jsdelivr-keepWatchdogHappy.sh
+    exit 1
+fi
 
 echo "Image download FINISHED" > /dev/tty5
 
