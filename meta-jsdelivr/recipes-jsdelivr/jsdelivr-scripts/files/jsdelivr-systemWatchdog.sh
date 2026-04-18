@@ -8,18 +8,23 @@ detect_boot_device
 
 BOOT_READY_FLAG="/tmp/.jsdelivr_boot_ready"
 
+# Open watchdog once; reuse FD 4 throughout. Closing without 'V' keeps the
+# hardware timer armed (DW watchdog supports magic-close), so process exit
+# triggers a HW reboot.
+exec 4> /dev/watchdog0
+
 # Wait for boot to complete before starting watchdog counter
 # This prevents premature recovery during normal boot sequence
 echo "Waiting for boot ready flag..." > /dev/tty2
 BOOT_READY_TIMEOUT=300
 BOOT_READY_WAITED=0
 while [ ! -f "$BOOT_READY_FLAG" ]; do
-    echo "1" > /dev/watchdog0 2>/dev/null || true
+    echo "1" >&4 2>/dev/null || true
     sleep 1
     BOOT_READY_WAITED=$((BOOT_READY_WAITED+1))
     if [ "$BOOT_READY_WAITED" -ge "$BOOT_READY_TIMEOUT" ]; then
-        echo "Boot never became ready after ${BOOT_READY_TIMEOUT}s; stopping watchdog keepalives" > /dev/tty2
-        break
+        echo "Boot never became ready after ${BOOT_READY_TIMEOUT}s; exiting so HW watchdog can reboot" > /dev/tty2
+        exit 1
     fi
 done
 echo "Boot ready, starting watchdog monitoring" > /dev/tty2
@@ -28,7 +33,6 @@ COUNTER=0
 (( TTL_MAX= 60 * 5  ))
 LAST_CHANCE=0
 LIMIT=0
-exec 4> /dev/watchdog0
 
 
 while [ 1 ];
@@ -42,11 +46,17 @@ do
 
             # Reset Docker storage (p6=docker) to force clean container reload
             # A/B layout: p3=rootfs-a, p4=rootfs-b, p5=persist, p6=docker, p7=docker_persist
-            docker stop $(docker ps -a -q) 2>/dev/null
+            CONTAINERS=$(docker ps -aq 2>/dev/null)
+            [ -n "$CONTAINERS" ] && docker stop $CONTAINERS 2>/dev/null
             systemctl stop docker 2>/dev/null
-            umount /var/lib/docker 2>/dev/null
+            if grep -q " /var/lib/docker " /proc/mounts; then
+                if ! umount /var/lib/docker; then
+                    echo "Failed to umount /var/lib/docker; skipping reformat" > /dev/tty2
+                    while :; do sleep 2; done
+                fi
+            fi
             DOCKER_PART="/dev/disk/by-label/docker"
-            [ -b "$DOCKER_PART" ] && mkfs.ext4 -F "$DOCKER_PART"
+            [ -b "$DOCKER_PART" ] && mkfs.ext4 -F -L docker "$DOCKER_PART"
             while :; do  sleep 2; done
         fi
         echo "1" >&4

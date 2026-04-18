@@ -17,7 +17,8 @@ killall  -9 jsdelivr-systemWatchdog.sh
 sleep 1
 /usr/bin/jsdelivr-keepWatchdogHappy.sh &
 
-docker stop $(docker ps -a -q)
+CONTAINERS=$(docker ps -aq 2>/dev/null)
+[ -n "$CONTAINERS" ] && docker stop $CONTAINERS
 
 echo "Initiate image download" > /dev/tty5
 
