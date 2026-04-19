@@ -1,0 +1,3 @@
+# RAUC signing key — never commit. Regenerate locally; see README "RAUC signing keys".
+meta-nanopi-zero2/recipes-core/rauc-bundle/files/dev-ca.key.pem
+meta-nanopi-zero2/recipes-core/rauc/files/dev-ca.key.pem

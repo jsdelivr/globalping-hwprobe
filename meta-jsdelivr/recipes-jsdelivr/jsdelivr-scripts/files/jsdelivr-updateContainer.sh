@@ -41,7 +41,7 @@ if [ -b /dev/sda1 ]; then
            sync
 
            reboot
-           echo "1" > /dev/watchdog
+           echo "1" > /dev/watchdog0
            while :; do  sleep 2; done
        fi
 
@@ -76,7 +76,7 @@ if [ -b /dev/sda1 ]; then
            sync
 
            reboot
-           echo "1" > /dev/watchdog
+           echo "1" > /dev/watchdog0
            while :; do  sleep 2; done
        fi
 
@@ -134,7 +134,7 @@ if [ -b /dev/sda1 ]; then
       sleep 5
 
       reboot
-      echo "1" > /dev/watchdog
+      echo "1" > /dev/watchdog0
       while :; do  sleep 2; done
 
    fi

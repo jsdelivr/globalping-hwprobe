@@ -87,6 +87,22 @@ Before building a new version update the version inside the firmware itself.
 3. Tag with the same version
 4. Upload
 
+### RAUC signing keys
+
+Before the first build you need a local RAUC signing key. The key is gitignored — never commit it.
+
+```
+openssl req -x509 -newkey rsa:4096 \
+    -keyout meta-nanopi-zero2/recipes-core/rauc-bundle/files/dev-ca.key.pem \
+    -out meta-nanopi-zero2/recipes-core/rauc-bundle/files/ca.cert.pem \
+    -days 3650 -nodes \
+    -subj "/O=NanoPi Zero2/CN=Development CA"
+cp meta-nanopi-zero2/recipes-core/rauc-bundle/files/ca.cert.pem \
+   meta-nanopi-zero2/recipes-core/rauc/files/ca.cert.pem
+```
+
+Both `ca.cert.pem` files must match — the rootfs verifier needs the same cert that signed the bundles.
+
 You can now run the build script that will download all the necessary dependencies and build the firmware.
 NOTE: This process can take a couple of hours
 

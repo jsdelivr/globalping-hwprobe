@@ -32,8 +32,9 @@ echo "It's time.... to UPDATE" > /dev/tty4
 echo "It's time....to REBOOT" > /dev/tty4
 
 
-killall jsdelivr_systemWatchdog
-docker kill $(docker ps -q)
+killall jsdelivr-systemWatchdog.sh
+CONTAINERS=$(docker ps -q 2>/dev/null)
+[ -n "$CONTAINERS" ] && docker kill $CONTAINERS
 reboot &
 
 
