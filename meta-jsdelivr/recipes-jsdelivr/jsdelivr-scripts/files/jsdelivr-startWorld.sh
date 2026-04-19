@@ -52,8 +52,9 @@ init_docker_repo() {
     else
         echo "ERROR: Frozen container image not found at /JSDELIVR_BASE_CONTAINER/globalping-probe.frozen" > /dev/tty3
         echo "ERROR: Frozen container image not found" > /dev/console
-        # Boot failed - set solid RED
+        # Boot failed - set solid RED and halt; RAUC mark-good won't run, slot rolls back next reboot
         led_boot_failed
+        while :; do sleep 60; done
     fi
 }
 
