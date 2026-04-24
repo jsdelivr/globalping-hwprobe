@@ -114,7 +114,34 @@ fi
 if [ "${BOOT_COUNT}" -ge "${MAX_BOOT_ATTEMPTS}" ]; then
     log "Boot counter reached threshold (${BOOT_COUNT} >= ${MAX_BOOT_ATTEMPTS})"
 
-    if [ "${OTHER_STATE}" != "bad" ]; then
+    # Safety: refuse to roll back into an unbootable slot. Mount target partition
+    # read-only and check for /boot/extlinux/extlinux.conf. If missing (e.g. fresh
+    # flash where rootfs-b was never populated), clear counter/state and keep
+    # running on the current slot instead of bricking the device.
+    OTHER_DEV="${DISK}p${OTHER_PARTNUM}"
+    TARGET_MOUNT="/run/rauc-target-check"
+    TARGET_BOOTABLE=false
+    mkdir -p "${TARGET_MOUNT}"
+    if mount -o ro "${OTHER_DEV}" "${TARGET_MOUNT}" 2>/dev/null; then
+        if [ -f "${TARGET_MOUNT}/boot/extlinux/extlinux.conf" ] && [ -f "${TARGET_MOUNT}/boot/Image" ]; then
+            TARGET_BOOTABLE=true
+        fi
+        umount "${TARGET_MOUNT}" 2>/dev/null || true
+    fi
+    rmdir "${TARGET_MOUNT}" 2>/dev/null || true
+
+    if [ "${TARGET_BOOTABLE}" != "true" ]; then
+        log "ABORT ROLLBACK: slot ${OTHER_SLOT} (${OTHER_DEV}) missing /boot/extlinux/extlinux.conf or /boot/Image"
+        log "Clearing counter and forcing state=good on slot ${RAUC_SLOT} to prevent brick"
+        if [ -d "${PERSIST_DIR}" ]; then
+            mount -o remount,rw /persist 2>/dev/null || true
+            echo "0" > "${COUNTER_FILE}.tmp" && mv "${COUNTER_FILE}.tmp" "${COUNTER_FILE}"
+            echo "good" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "${STATE_FILE}"
+            sync
+            mount -o remount,ro /persist 2>/dev/null || true
+        fi
+        NEW_COUNT=0
+    elif [ "${OTHER_STATE}" != "bad" ]; then
         log "ROLLBACK: Switching to slot ${OTHER_SLOT}"
         # Mark current slot as bad, reset other slot's counter
         if [ -d "${PERSIST_DIR}" ]; then

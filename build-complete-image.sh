@@ -16,7 +16,7 @@
 # See README.md for concrete invocations of crowdsec, netdata, and wireguard.
 #
 
-set -e
+set -eo pipefail
 
 # Colors
 RED='\033[0;31m'
@@ -84,7 +84,27 @@ echo -e "${BLUE}NanoPi Zero2 Complete Image Builder${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
-# Step 0a: Add containers (only if requested)
+# Step 0a: Purge any previously-registered optional containers so the image
+# reflects only the --add-container flags passed to THIS invocation.
+# --add-container is additive per-run; without this reset, containers from
+# prior builds would silently leak into the rootfs.
+RECIPES_DIR="$PROJECT_DIR/meta-jsdelivr/recipes-jsdelivr"
+PURGED=0
+for recipe_dir in "$RECIPES_DIR"/jsdelivr-container-*; do
+    [ -d "$recipe_dir" ] || continue
+    name="${recipe_dir##*/jsdelivr-container-}"
+    # Keep the management system — it's not an optional container.
+    [ "$name" = "manager" ] && continue
+    if [ $PURGED -eq 0 ]; then
+        echo -e "${YELLOW}Purging previously-registered optional containers...${NC}"
+        PURGED=1
+    fi
+    "$PROJECT_DIR/add-container.sh" --remove "$name" >/dev/null
+    echo -e "  ${YELLOW}purged:${NC} $name"
+done
+[ $PURGED -eq 1 ] && echo ""
+
+# Step 0b: Add containers (only if requested)
 if [ ${#ADD_CONTAINER_ARGS[@]} -gt 0 ]; then
     echo -e "${GREEN}Adding containers to build...${NC}"
     "$PROJECT_DIR/add-container.sh" "${ADD_CONTAINER_ARGS[@]}"
@@ -97,6 +117,12 @@ fi
 
 # Step 0c: Apply firmware version if requested
 if [ -n "$FIRMWARE_VERSION" ]; then
+    # Restrict to safe chars: letters, digits, dot, dash, underscore.
+    # Prevents sed delimiter (|), shell metacharacters, and whitespace from breaking the substitution.
+    if ! [[ "$FIRMWARE_VERSION" =~ ^[A-Za-z0-9._-]+$ ]]; then
+        echo -e "${RED}Error: --firmware-version must match [A-Za-z0-9._-]+ (got: ${FIRMWARE_VERSION})${NC}"
+        exit 1
+    fi
     STARTWORLD="$PROJECT_DIR/meta-jsdelivr/recipes-jsdelivr/jsdelivr-scripts/files/jsdelivr-startWorld.sh"
     if [ ! -f "$STARTWORLD" ]; then
         echo -e "${RED}Error: $STARTWORLD not found${NC}"
