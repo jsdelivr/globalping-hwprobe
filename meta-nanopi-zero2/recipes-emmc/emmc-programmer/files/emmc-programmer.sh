@@ -175,6 +175,22 @@ if [ "$PRODUCTION_MD5" != "$EMMC_MD5" ]; then
     exit 1
 fi
 
+# Step 3b: Mirror rootfs-a -> rootfs-b so A/B fallback is bootable on first boot.
+# WIC only populates rootfs-a; without this, any RAUC rollback (boot-counter trip or
+# mark-good failure) flips legacy_boot to an empty rootfs-b and bricks the device.
+echo "" > /dev/tty3
+echo "Step 3b: Cloning rootfs-a -> rootfs-b for A/B fallback..." > /dev/tty3
+
+ROOTFS_A="${TARGET_DEVICE}p3"
+ROOTFS_B="${TARGET_DEVICE}p4"
+if [ -b "$ROOTFS_A" ] && [ -b "$ROOTFS_B" ]; then
+    dd if="$ROOTFS_A" of="$ROOTFS_B" bs=4M status=progress 2>&1 | tee /dev/tty3
+    sync
+    echo "rootfs-b populated from rootfs-a" > /dev/tty3
+else
+    echo "WARNING: rootfs-a or rootfs-b partition node missing, skipping clone" > /dev/tty3
+fi
+
 # Step 4: Configure eMMC boot mode
 echo "" > /dev/tty3
 echo "Step 4: Configuring eMMC boot mode..." > /dev/tty3

@@ -166,63 +166,12 @@ UPTIME=${UPTIME}
 STATUS=failed
 EOF
 
-    # Determine rollback target
-    if [ -n "${BOOT_SLOT}" ] && [ "${BOOT_SLOT}" != "unknown" ]; then
-        if [ "${BOOT_SLOT}" = "a" ]; then
-            OTHER_SLOT="b"
-            CURRENT_PARTNUM=${ROOTFS_A_PARTNUM}
-            OTHER_PARTNUM=${ROOTFS_B_PARTNUM}
-        else
-            OTHER_SLOT="a"
-            CURRENT_PARTNUM=${ROOTFS_B_PARTNUM}
-            OTHER_PARTNUM=${ROOTFS_A_PARTNUM}
-        fi
-
-        # Read other slot state
-        OTHER_STATE="good"
-        if [ -f "${PERSIST_DIR}/state-${OTHER_SLOT}" ]; then
-            OTHER_STATE=$(cat "${PERSIST_DIR}/state-${OTHER_SLOT}" 2>/dev/null || echo "good")
-        fi
-
-        # Mark current slot as bad
-        if [ -d "${PERSIST_DIR}" ]; then
-            mount -o remount,rw /persist 2>/dev/null || true
-            echo "bad" > "${PERSIST_DIR}/state-${BOOT_SLOT}.tmp" && \
-                mv "${PERSIST_DIR}/state-${BOOT_SLOT}.tmp" "${PERSIST_DIR}/state-${BOOT_SLOT}"
-            sync
-        fi
-
-        if [ "${OTHER_STATE}" != "bad" ]; then
-            log "ROLLBACK: Validation failed, switching to slot ${OTHER_SLOT}"
-            if [ -d "${PERSIST_DIR}" ]; then
-                # Reset other slot's counter for fresh attempts
-                echo "0" > "${PERSIST_DIR}/boot-count-${OTHER_SLOT}.tmp" && \
-                    mv "${PERSIST_DIR}/boot-count-${OTHER_SLOT}.tmp" "${PERSIST_DIR}/boot-count-${OTHER_SLOT}"
-                sync
-                mount -o remount,ro /persist 2>/dev/null || true
-            fi
-            # Flip legacy_boot flag
-            /usr/sbin/parted -s "${DISK}" set ${OTHER_PARTNUM} legacy_boot on
-            /usr/sbin/parted -s "${DISK}" set ${CURRENT_PARTNUM} legacy_boot off
-            sync
-            set_rollback_leds
-            log "Rebooting into slot ${OTHER_SLOT}..."
-            reboot -f
-            exit 0
-        else
-            log "CRITICAL: Both slots marked bad - staying on current slot ${BOOT_SLOT}"
-            if [ -d "${PERSIST_DIR}" ]; then
-                # Deadlock: clear current state to allow recovery
-                echo "good" > "${PERSIST_DIR}/state-${BOOT_SLOT}.tmp" && \
-                    mv "${PERSIST_DIR}/state-${BOOT_SLOT}.tmp" "${PERSIST_DIR}/state-${BOOT_SLOT}"
-                echo "0" > "${PERSIST_DIR}/boot-count-${BOOT_SLOT}.tmp" && \
-                    mv "${PERSIST_DIR}/boot-count-${BOOT_SLOT}.tmp" "${PERSIST_DIR}/boot-count-${BOOT_SLOT}"
-                sync
-                mount -o remount,ro /persist 2>/dev/null || true
-            fi
-            error "Boot validation failed - both slots bad, deadlock cleared"
-        fi
-    else
-        error "Boot validation failed - slot unknown, cannot rollback"
-    fi
+    # Do NOT flip legacy_boot or reboot here. rauc-boot-check owns rollback decisions
+    # (counter-based, with target-bootable safety check). Triggering rollback from
+    # mark-good caused single transient docker failures to brick fresh-flashed
+    # devices whose rootfs-b was empty.
+    # We leave the boot counter alone so boot-check can increment it on next boot,
+    # and do not mark the slot bad — transient validation failures should retry.
+    log "Validation failed on slot ${BOOT_SLOT:-unknown} - leaving rollback to rauc-boot-check"
+    exit 1
 fi

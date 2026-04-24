@@ -2,7 +2,7 @@
 Description=RAUC Mark Good - Validate successful boot
 Documentation=https://rauc.io/
 After=multi-user.target docker.service rauc.service rauc-boot-check.service
-Requires=docker.service
+Wants=docker.service
 RequiresMountsFor=/persist
 
 [Service]
