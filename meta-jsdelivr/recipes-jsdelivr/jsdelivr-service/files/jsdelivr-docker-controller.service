@@ -5,8 +5,9 @@ Wants=network-online.target
 Requires=docker.socket
 
 [Service]
-Type=notify
-
+# Type=simple, not notify: the python controller does not call sd_notify(READY=1),
+# so a notify type leaves the start job hung forever and blocks multi-user.target.
+Type=simple
 ExecStart=python3 /usr/bin/jsdelivr-docker-controller.py
 ExecReload=/bin/kill -s HUP $MAINPID
 
