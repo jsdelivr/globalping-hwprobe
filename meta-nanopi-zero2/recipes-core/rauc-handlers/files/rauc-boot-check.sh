@@ -198,7 +198,7 @@ fi
 
 # Verify we're actually on the expected rootfs
 # Check /proc/mounts for root device
-ROOT_DEV=$($GREP ' / ' /proc/mounts | head -1 | cut -d' ' -f1)
+ROOT_DEV=$($GREP ' / ' /proc/mounts | head -n 1 | cut -d' ' -f1)
 log "Root device: ${ROOT_DEV}"
 
 # Verify by checking if the expected PARTLABEL device exists and matches root

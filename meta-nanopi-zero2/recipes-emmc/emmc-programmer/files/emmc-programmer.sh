@@ -181,14 +181,39 @@ fi
 echo "" > /dev/tty3
 echo "Step 3b: Cloning rootfs-a -> rootfs-b for A/B fallback..." > /dev/tty3
 
+# After raw dd of the WIC the kernel still has the SD-card-era partition table
+# cached for ${TARGET_DEVICE}; ${TARGET_DEVICE}p3/p4 nodes may be missing or
+# pointing at stale offsets. Force a re-read before the clone.
+partprobe "${TARGET_DEVICE}" 2>/dev/null || blockdev --rereadpt "${TARGET_DEVICE}" 2>/dev/null || true
+udevadm settle 2>/dev/null || true
+sleep 1
+
 ROOTFS_A="${TARGET_DEVICE}p3"
 ROOTFS_B="${TARGET_DEVICE}p4"
 if [ -b "$ROOTFS_A" ] && [ -b "$ROOTFS_B" ]; then
+    echo "Cloning $ROOTFS_A -> $ROOTFS_B..." > /dev/tty3
     dd if="$ROOTFS_A" of="$ROOTFS_B" bs=4M status=progress 2>&1 | tee /dev/tty3
     sync
-    echo "rootfs-b populated from rootfs-a" > /dev/tty3
+
+    # Verify the clone landed: check that rootfs-b has the boot files we'd need
+    # to come back up after a rollback.
+    CLONE_MOUNT="/tmp/_clone_check"
+    mkdir -p "$CLONE_MOUNT"
+    if mount -o ro "$ROOTFS_B" "$CLONE_MOUNT" 2>/dev/null; then
+        if [ -f "$CLONE_MOUNT/boot/extlinux/extlinux.conf" ] && [ -f "$CLONE_MOUNT/boot/Image" ]; then
+            echo "rootfs-b populated from rootfs-a (verified)" > /dev/tty3
+        else
+            echo "ERROR: rootfs-b clone did NOT produce boot files" > /dev/tty3
+            ls -la "$CLONE_MOUNT/boot/" > /dev/tty3 2>/dev/null
+        fi
+        umount "$CLONE_MOUNT"
+    else
+        echo "WARNING: could not mount $ROOTFS_B to verify clone" > /dev/tty3
+    fi
+    rmdir "$CLONE_MOUNT" 2>/dev/null || true
 else
-    echo "WARNING: rootfs-a or rootfs-b partition node missing, skipping clone" > /dev/tty3
+    echo "WARNING: rootfs-a ($ROOTFS_A) or rootfs-b ($ROOTFS_B) partition node missing after partprobe" > /dev/tty3
+    ls -la "${TARGET_DEVICE}"* > /dev/tty3 2>/dev/null
 fi
 
 # Step 4: Configure eMMC boot mode
