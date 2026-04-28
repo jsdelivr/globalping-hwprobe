@@ -1,4 +1,10 @@
 #!/bin/bash
+# Catch failures inside pipelines (xz | dd | tee, dd | md5sum, ...). Without
+# pipefail, only tee's exit code surfaces and write/decompression errors are
+# silently ignored. Not enabling -e because several status pipelines below
+# tolerate optional failures via 2>/dev/null.
+set -o pipefail
+
 # eMMC Programmer with LED feedback, hardware testing, and verification
 #
 # Process:
@@ -124,6 +130,17 @@ echo "Decompressing and flashing: $PRODUCTION_IMAGE" > /dev/tty3
 # Using xz -dc to decompress to stdout, then dd to write to eMMC
 # xz properly handles files > 4GB (unlike gzip which has 32-bit size field overflow)
 xz -dc "$PRODUCTION_IMAGE" | dd of=${TARGET_DEVICE} bs=4M 2>&1 | tee /dev/tty3
+# Inspect every stage of the pipeline; tee succeeding does not imply xz/dd did.
+FLASH_PIPESTATUS=("${PIPESTATUS[@]}")
+if [ "${FLASH_PIPESTATUS[0]}" -ne 0 ] || [ "${FLASH_PIPESTATUS[1]}" -ne 0 ]; then
+    kill $LED_PID 2>/dev/null
+    /usr/bin/led-control.sh failed &
+    echo "" > /dev/tty3
+    echo "ERROR: flash pipeline failed: xz=${FLASH_PIPESTATUS[0]} dd=${FLASH_PIPESTATUS[1]}" > /dev/tty3
+    echo "DO NOT USE THIS DEVICE!" > /dev/tty3
+    wait
+    exit 1
+fi
 sync
 
 echo "" > /dev/tty3
@@ -190,30 +207,57 @@ sleep 1
 
 ROOTFS_A="${TARGET_DEVICE}p3"
 ROOTFS_B="${TARGET_DEVICE}p4"
+# Helper: abort programming with the failure LED. Used when the rootfs-b clone
+# cannot be verified — shipping the device without a working fallback slot
+# defeats the whole A/B safety net.
+clone_fatal() {
+    umount "$CLONE_MOUNT" 2>/dev/null || true
+    rmdir "$CLONE_MOUNT" 2>/dev/null || true
+    kill $LED_PID 2>/dev/null
+    /usr/bin/led-control.sh failed &
+    echo "" > /dev/tty3
+    echo "========================================" > /dev/tty3
+    echo "ERROR: rootfs-b clone verification failed" > /dev/tty3
+    echo "========================================" > /dev/tty3
+    echo "Slow blinking RED - A/B fallback not bootable" > /dev/tty3
+    echo "DO NOT USE THIS DEVICE!" > /dev/tty3
+    wait
+    exit 1
+}
+
+CLONE_MOUNT="/tmp/_clone_check"
+
 if [ -b "$ROOTFS_A" ] && [ -b "$ROOTFS_B" ]; then
     echo "Cloning $ROOTFS_A -> $ROOTFS_B..." > /dev/tty3
     dd if="$ROOTFS_A" of="$ROOTFS_B" bs=4M status=progress 2>&1 | tee /dev/tty3
+    CLONE_PIPESTATUS=("${PIPESTATUS[@]}")
     sync
+    if [ "${CLONE_PIPESTATUS[0]}" -ne 0 ]; then
+        echo "ERROR: dd rootfs-a -> rootfs-b failed (exit ${CLONE_PIPESTATUS[0]})" > /dev/tty3
+        clone_fatal
+    fi
 
     # Verify the clone landed: check that rootfs-b has the boot files we'd need
     # to come back up after a rollback.
-    CLONE_MOUNT="/tmp/_clone_check"
     mkdir -p "$CLONE_MOUNT"
     if mount -o ro "$ROOTFS_B" "$CLONE_MOUNT" 2>/dev/null; then
         if [ -f "$CLONE_MOUNT/boot/extlinux/extlinux.conf" ] && [ -f "$CLONE_MOUNT/boot/Image" ]; then
             echo "rootfs-b populated from rootfs-a (verified)" > /dev/tty3
+            umount "$CLONE_MOUNT"
+            rmdir "$CLONE_MOUNT" 2>/dev/null || true
         else
             echo "ERROR: rootfs-b clone did NOT produce boot files" > /dev/tty3
             ls -la "$CLONE_MOUNT/boot/" > /dev/tty3 2>/dev/null
+            clone_fatal
         fi
-        umount "$CLONE_MOUNT"
     else
-        echo "WARNING: could not mount $ROOTFS_B to verify clone" > /dev/tty3
+        echo "ERROR: could not mount $ROOTFS_B to verify clone" > /dev/tty3
+        clone_fatal
     fi
-    rmdir "$CLONE_MOUNT" 2>/dev/null || true
 else
-    echo "WARNING: rootfs-a ($ROOTFS_A) or rootfs-b ($ROOTFS_B) partition node missing after partprobe" > /dev/tty3
+    echo "ERROR: rootfs-a ($ROOTFS_A) or rootfs-b ($ROOTFS_B) partition node missing after partprobe" > /dev/tty3
     ls -la "${TARGET_DEVICE}"* > /dev/tty3 2>/dev/null
+    clone_fatal
 fi
 
 # Step 4: Configure eMMC boot mode
