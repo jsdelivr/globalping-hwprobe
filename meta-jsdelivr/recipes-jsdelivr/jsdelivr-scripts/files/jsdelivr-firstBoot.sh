@@ -36,6 +36,7 @@ log "Detected boot device: $BOOT_DEVICE"
 # Partition layout for A/B updates:
 # p3=rootfs-a, p4=rootfs-b, p5=persist, p6=docker, p7=docker_persist
 FIRST_BOOT_FLAG="jsdelivr-first-boot-complete"
+FIRST_BOOT_INPROGRESS_FLAG="jsdelivr-first-boot-in-progress"
 IDENTITY_DIR="device-identity"
 
 # The persist partition is mounted at /persist by fstab (using LABEL=persist)
@@ -71,7 +72,28 @@ if [ -f "${PERSIST_MOUNT}/${FIRST_BOOT_FLAG}" ]; then
     exit 0
 fi
 
+# A previous run started but did not complete (script crashed mid-init, power
+# loss, etc.). Re-running blindly would re-execute destructive ops like
+# parted, mkfs, and overwriting extlinux.conf on the inactive slot. Refuse to
+# proceed automatically — operator must clear the flag to retry.
+if [ -f "${PERSIST_MOUNT}/${FIRST_BOOT_INPROGRESS_FLAG}" ]; then
+    log "FATAL - previous first-boot run did not complete (in-progress flag present)"
+    log "Operator must investigate and remove ${PERSIST_MOUNT}/${FIRST_BOOT_INPROGRESS_FLAG} to retry"
+    log "Halting to prevent partition / extlinux corruption"
+    exit 1
+fi
+
 log "First boot detected - starting device initialization..."
+
+# Mark in progress before any destructive op so a crash leaves a tombstone.
+log "Remounting /persist rw to write in-progress marker..."
+if ! mount -o remount,rw /persist; then
+    log "FATAL - Failed to remount /persist as read-write!"
+    log "NOT rebooting to prevent reboot loop"
+    exit 1
+fi
+touch "${PERSIST_MOUNT}/${FIRST_BOOT_INPROGRESS_FLAG}"
+sync
 
 # Detect which RAUC slot we booted from (a or b)
 RAUC_SLOT=$(grep -o 'rauc\.slot=[ab]' /proc/cmdline | cut -d= -f2)
@@ -324,6 +346,8 @@ fi
 
 if touch "${PERSIST_MOUNT}/${FIRST_BOOT_FLAG}"; then
     log "Created completion flag on persist partition"
+    # Clear the in-progress tombstone now that we've reached completion
+    rm -f "${PERSIST_MOUNT}/${FIRST_BOOT_INPROGRESS_FLAG}"
     sync
     # Remount /persist back to read-only for safety
     mount -o remount,ro /persist

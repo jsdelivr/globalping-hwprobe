@@ -38,6 +38,14 @@ to_epoch() {
 }
 
 START_TS="$(to_epoch "$ts_spaced")"
+# If every parse path failed, treat the iteration as inconclusive instead of
+# pretending the container has been up since 1970 (which would falsely mark
+# SYSTEM_STABLE the moment a freshly crashed container reappears).
+if [ -z "$START_TS" ]; then
+    echo "WARN: could not parse container start time '$ts_spaced', skipping cycle" > /dev/tty1
+    sleep 2
+    continue
+fi
 CURRENT_TS="$(date -u +%s)"
 UP_SECS=$(( CURRENT_TS - START_TS ))
 

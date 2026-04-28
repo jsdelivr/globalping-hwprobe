@@ -57,9 +57,7 @@ trap cleanup_usb EXIT
 
 if [ -f "$USB_MOUNT/JSDELIVR.UPD" ]; then
    echo "UPDATE Flag found on $USB_DEV" > /dev/tty4
-   echo timer  > /sys/class/leds/user_led/trigger
-   echo 50 >   /sys/class/leds/user_led/delay_on
-   echo 50 >   /sys/class/leds/user_led/delay_off
+   led_container_starting
 
    CONTAINERS=$(docker ps -aq 2>/dev/null)
    [ -n "$CONTAINERS" ] && docker stop $CONTAINERS
@@ -91,9 +89,7 @@ fi
 
 if [ -f "$USB_MOUNT/JSDELIVR-DEV.UPD" ]; then
    echo "DEV UPDATE Flag found on $USB_DEV" > /dev/tty4
-   echo timer  > /sys/class/leds/user_led/trigger
-   echo 50 >   /sys/class/leds/user_led/delay_on
-   echo 50 >   /sys/class/leds/user_led/delay_off
+   led_container_starting
 
    echo "Starting container update process" > /dev/tty4
 
