@@ -4,12 +4,15 @@
 source /usr/bin/jsdelivr-utils.sh
 
 # Source muid.data (may not exist on very first boot before firstBoot.sh completes)
+# /etc/muid.data uses bare assignment, so source creates a shell variable.
+# Must export so `docker run --env GP_PROBE_UUID` picks it up.
 if [ -f /etc/muid.data ]; then
     source /etc/muid.data
 else
     echo "Warning: /etc/muid.data not found, using empty UUID" > /dev/tty3
     GP_PROBE_UUID=""
 fi
+export GP_PROBE_UUID
 
 export GP_HOST_HW=true
 export GP_HOST_DEVICE=v2
@@ -78,6 +81,14 @@ if ! /usr/bin/jsdelivr-firstBoot.sh; then
     # Don't continue with broken system - wait for user intervention
     echo "System halted due to first boot failure. Please check logs." > /dev/console
     while :; do sleep 60; done
+fi
+
+# firstBoot.sh may have just created /etc/muid.data; re-source so the rest of
+# this script and the docker container both see the real UUID rather than the
+# empty fallback we set at the top.
+if [ -f /etc/muid.data ]; then
+    source /etc/muid.data
+    export GP_PROBE_UUID
 fi
 
 /usr/bin/jsdelivr-updateContainer.sh
