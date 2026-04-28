@@ -176,6 +176,18 @@ load_optional_containers() {
         return 0
     fi
 
+    # Refuse to proceed with a corrupt manifest — silent jq failures otherwise
+    # leave docker_image="" and start_optional_containers fails per-container
+    # without a clear root cause.
+    if [ -f "$MANIFEST_FILE" ]; then
+        if ! jq empty "$MANIFEST_FILE" >/dev/null 2>&1; then
+            log "ERROR: $MANIFEST_FILE is not valid JSON, skipping optional containers"
+            return 1
+        fi
+    else
+        log "WARNING: $MANIFEST_FILE not found, optional containers will use defaults"
+    fi
+
     # Load configuration
     load_config
 
@@ -239,6 +251,13 @@ start_optional_containers() {
         docker_image="${docker_image:-$container_name}"
         network_mode="${network_mode:-host}"
         restart_policy="${restart_policy:-always}"
+
+        # If we still have no image after defaults something is badly wrong;
+        # surface it loudly rather than letting `docker run` fail with empty arg.
+        if [ -z "$docker_image" ]; then
+            log "ERROR: no docker_image resolved for $container_name (manifest entry missing?), skipping"
+            continue
+        fi
 
         log "Starting container: $container_name (image: $docker_image)"
 

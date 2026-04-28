@@ -297,8 +297,11 @@ def save_settings(new_settings):
         invalid_keys = provided_keys - valid_keys
         return False, f"Invalid setting keys: {invalid_keys}. Valid keys are: {valid_keys}"
 
-    # Remount /persist as read-write
+    # Remount /persist as read-write. If the remount itself failed, attempt
+    # a best-effort remount-RO so we never leave /persist accidentally writable
+    # (e.g. partial systemd reports + actual mount race).
     if not remount_persist_rw():
+        remount_persist_ro()
         return False, "Failed to remount /persist as read-write"
 
     try:
