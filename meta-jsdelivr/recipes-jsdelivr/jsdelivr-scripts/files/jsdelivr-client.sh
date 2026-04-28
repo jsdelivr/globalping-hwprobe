@@ -79,11 +79,19 @@ EOF
 while [[ $# -gt 0 ]]; do
     case $1 in
         --host)
+            if [[ $# -lt 2 || "$2" == -* ]]; then
+                echo -e "${RED}ERROR: --host requires a value${NC}"
+                exit 1
+            fi
             API_HOST="$2"
             BASE_URL="http://${API_HOST}:${API_PORT}"
             shift 2
             ;;
         --port)
+            if [[ $# -lt 2 || ! "$2" =~ ^[0-9]+$ ]]; then
+                echo -e "${RED}ERROR: --port requires a numeric value${NC}"
+                exit 1
+            fi
             API_PORT="$2"
             BASE_URL="http://${API_HOST}:${API_PORT}"
             shift 2
@@ -108,8 +116,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-COMMAND="$1"
-shift
+COMMAND="${1:-}"
+[ $# -gt 0 ] && shift
 
 case "$COMMAND" in
     containers)
@@ -169,7 +177,10 @@ except:
             exit 1
         fi
 
-        response=$(api -X POST "${BASE_URL}/containers/${container}/start")
+        if ! response=$(api -X POST "${BASE_URL}/containers/${container}/start"); then
+            echo -e "${RED}ERROR: Cannot connect to ${BASE_URL}${NC}"
+            exit 1
+        fi
 
         if [ "$(json_status "$response")" = "success" ]; then
             echo -e "${GREEN}✓ Container '${container}' started successfully${NC}"
@@ -181,6 +192,7 @@ print(f\"Container ID: {data.get('container_id', 'N/A')}\")
         else
             echo -e "${RED}ERROR: Failed to start container${NC}"
             echo "$response" | python3 -m json.tool 2>/dev/null || echo "$response"
+            exit 1
         fi
         ;;
 
@@ -193,7 +205,10 @@ print(f\"Container ID: {data.get('container_id', 'N/A')}\")
             exit 1
         fi
 
-        response=$(api -X POST "${BASE_URL}/containers/${container}/stop")
+        if ! response=$(api -X POST "${BASE_URL}/containers/${container}/stop"); then
+            echo -e "${RED}ERROR: Cannot connect to ${BASE_URL}${NC}"
+            exit 1
+        fi
 
         if [ "$(json_status "$response")" = "success" ]; then
             echo -e "${YELLOW}✓ Container '${container}' stopped${NC}"
@@ -205,12 +220,17 @@ print(f\"Container ID: {data.get('container_id', 'N/A')}\")
         else
             echo -e "${RED}ERROR: Failed to stop container${NC}"
             echo "$response" | python3 -m json.tool 2>/dev/null || echo "$response"
+            exit 1
         fi
         ;;
 
     settings)
         echo -e "${BOLD}Application Settings:${NC}\n"
-        api "${BASE_URL}/settings" | python3 -c "
+        if ! response=$(api "${BASE_URL}/settings"); then
+            echo -e "${RED}ERROR: Cannot connect to ${BASE_URL}${NC}"
+            exit 1
+        fi
+        echo "$response" | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
@@ -228,6 +248,7 @@ try:
         print(f'{key}: {display_value}')
 except:
     print('Failed to parse response', file=sys.stderr)
+    sys.exit(1)
 "
         ;;
 
@@ -240,7 +261,12 @@ except:
             exit 1
         fi
 
-        api "${BASE_URL}/settings/${setting_name}" | python3 -c "
+        encoded_setting_name=$(printf '%s' "$setting_name" | python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.stdin.read(), safe=''))")
+        if ! response=$(api "${BASE_URL}/settings/${encoded_setting_name}"); then
+            echo -e "${RED}ERROR: Cannot connect to ${BASE_URL}${NC}"
+            exit 1
+        fi
+        echo "$response" | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
@@ -259,6 +285,7 @@ try:
     print(f'File: {file_path}')
 except:
     print('Setting not found or invalid response', file=sys.stderr)
+    sys.exit(1)
 "
         ;;
 
@@ -272,10 +299,14 @@ except:
             exit 1
         fi
 
-        # URL encode the value (pipe via stdin to avoid shell interpolation into Python)
-        encoded_value=$(printf '%s' "$value" | python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.stdin.read()))")
+        # URL encode path segments; safe='' escapes "/" too.
+        encoded_setting_name=$(printf '%s' "$setting_name" | python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.stdin.read(), safe=''))")
+        encoded_value=$(printf '%s' "$value" | python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.stdin.read(), safe=''))")
 
-        response=$(api -X PUT "${BASE_URL}/settings/${setting_name}/${encoded_value}")
+        if ! response=$(api -X PUT "${BASE_URL}/settings/${encoded_setting_name}/${encoded_value}"); then
+            echo -e "${RED}ERROR: Cannot connect to ${BASE_URL}${NC}"
+            exit 1
+        fi
 
         if [ "$(json_status "$response")" = "success" ]; then
             echo -e "${GREEN}✓ Setting '${setting_name}' updated successfully${NC}"
@@ -296,17 +327,22 @@ print(f'New value: {display_value}')
         else
             echo -e "${RED}ERROR: Failed to update setting${NC}"
             echo "$response" | python3 -m json.tool 2>/dev/null || echo "$response"
+            exit 1
         fi
         ;;
 
     health)
-        response=$(api "${BASE_URL}/health")
+        if ! response=$(api "${BASE_URL}/health"); then
+            echo -e "${RED}ERROR: Cannot connect to ${BASE_URL}${NC}"
+            exit 1
+        fi
 
         if [ "$(json_status "$response")" = "healthy" ]; then
             echo -e "${GREEN}✓ API is healthy${NC}"
         else
             echo -e "${RED}✗ API health check failed${NC}"
             echo "$response"
+            exit 1
         fi
         ;;
 

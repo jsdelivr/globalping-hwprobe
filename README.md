@@ -57,7 +57,7 @@ In addition to the [security features of the software probe](https://github.com/
  - The rootfs of the probe OS is read-only
  - The kernel configuration was tuned to reduce the size and exploitable area
  - The probe container runs completely from RAM
- - The OS will automatically reboot every 3 days + random amount of hours between 1 and 48
+ - The OS will automatically reboot every 3 days plus a random offset of up to 48 hours
  - The OS was trimmed to have minimum attack surface
  - A/B rootfs slots with automatic rollback protect against bad firmware updates
  - A hardware watchdog reboots the device if the system becomes unresponsive
@@ -81,11 +81,13 @@ git clone https://github.com/jsdelivr/globalping-hwprobe
 ```
 
 NOTE for maintainers:
-Before building a new version update the version inside the firmware itself.
-1. Update https://github.com/jsdelivr/globalping-hwprobe/blob/master/meta-jsdelivr/recipes-jsdelivr/jsdelivr-scripts/files/jsdelivr-startWorld.sh#L6
-2. Clone and build
+Before building a new version, set the firmware version at build time:
+1. Clone
+2. Build with `./build-complete-image.sh --firmware-version <ver>` — this rewrites `GP_HOST_FIRMWARE` in `jsdelivr-startWorld.sh` (currently line 16) before the Yocto build
 3. Tag with the same version
 4. Upload
+
+As a fallback, the version can still be hand-edited in `meta-jsdelivr/recipes-jsdelivr/jsdelivr-scripts/files/jsdelivr-startWorld.sh` (line 16) before building.
 
 ### RAUC signing keys
 

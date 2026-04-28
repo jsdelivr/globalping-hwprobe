@@ -24,58 +24,68 @@ LED_GREEN="/sys/class/leds/user_led"
 #   # ... do boot stuff ...
 #   led_container_stable
 
+# Internal helper: write to an LED sysfs attribute if it exists.
+# Silently no-ops on hardware/dev environments where the LED paths are absent
+# (e.g. running scripts inside the SDK or on a board with different LED bindings),
+# so callers don't blow up and abort boot just because a status indicator is missing.
+_led_write() {
+    local path="$1"
+    local value="$2"
+    [ -w "$path" ] && echo "$value" > "$path" 2>/dev/null || true
+}
+
 # Turn off both LEDs
 led_off() {
-    echo "none" > ${LED_RED}/trigger 2>/dev/null
-    echo 0 > ${LED_RED}/brightness 2>/dev/null
-    echo "none" > ${LED_GREEN}/trigger 2>/dev/null
-    echo 0 > ${LED_GREEN}/brightness 2>/dev/null
+    _led_write "${LED_RED}/trigger" "none"
+    _led_write "${LED_RED}/brightness" 0
+    _led_write "${LED_GREEN}/trigger" "none"
+    _led_write "${LED_GREEN}/brightness" 0
 }
 
 # Booting: Slow blinking GREEN (1s on/1s off)
 led_booting() {
-    echo "none" > ${LED_RED}/trigger
-    echo 0 > ${LED_RED}/brightness
-    echo "timer" > ${LED_GREEN}/trigger
+    _led_write "${LED_RED}/trigger" "none"
+    _led_write "${LED_RED}/brightness" 0
+    _led_write "${LED_GREEN}/trigger" "timer"
     sleep 0.2
-    echo 1000 > ${LED_GREEN}/delay_on
-    echo 1000 > ${LED_GREEN}/delay_off
+    _led_write "${LED_GREEN}/delay_on" 1000
+    _led_write "${LED_GREEN}/delay_off" 1000
 }
 
 # Container starting: Fast blinking GREEN (100ms on/100ms off)
 led_container_starting() {
-    echo "none" > ${LED_RED}/trigger
-    echo 0 > ${LED_RED}/brightness
-    echo "timer" > ${LED_GREEN}/trigger
+    _led_write "${LED_RED}/trigger" "none"
+    _led_write "${LED_RED}/brightness" 0
+    _led_write "${LED_GREEN}/trigger" "timer"
     sleep 0.2
-    echo 100 > ${LED_GREEN}/delay_on
-    echo 100 > ${LED_GREEN}/delay_off
+    _led_write "${LED_GREEN}/delay_on" 100
+    _led_write "${LED_GREEN}/delay_off" 100
 }
 
 # Container stable: Solid GREEN
 led_container_stable() {
-    echo "none" > ${LED_RED}/trigger
-    echo 0 > ${LED_RED}/brightness
-    echo "none" > ${LED_GREEN}/trigger
-    echo 1 > ${LED_GREEN}/brightness
+    _led_write "${LED_RED}/trigger" "none"
+    _led_write "${LED_RED}/brightness" 0
+    _led_write "${LED_GREEN}/trigger" "none"
+    _led_write "${LED_GREEN}/brightness" 1
 }
 
 # Boot failed: Solid RED
 led_boot_failed() {
-    echo "none" > ${LED_GREEN}/trigger
-    echo 0 > ${LED_GREEN}/brightness
-    echo "none" > ${LED_RED}/trigger
-    echo 1 > ${LED_RED}/brightness
+    _led_write "${LED_GREEN}/trigger" "none"
+    _led_write "${LED_GREEN}/brightness" 0
+    _led_write "${LED_RED}/trigger" "none"
+    _led_write "${LED_RED}/brightness" 1
 }
 
 # Container failed: Fast blinking RED (500ms on/500ms off)
 led_container_failed() {
-    echo "none" > ${LED_GREEN}/trigger
-    echo 0 > ${LED_GREEN}/brightness
-    echo "timer" > ${LED_RED}/trigger
+    _led_write "${LED_GREEN}/trigger" "none"
+    _led_write "${LED_GREEN}/brightness" 0
+    _led_write "${LED_RED}/trigger" "timer"
     sleep 0.2
-    echo 500 > ${LED_RED}/delay_on
-    echo 500 > ${LED_RED}/delay_off
+    _led_write "${LED_RED}/delay_on" 500
+    _led_write "${LED_RED}/delay_off" 500
 }
 
 # =============================================================================

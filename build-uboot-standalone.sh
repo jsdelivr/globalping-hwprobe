@@ -5,7 +5,7 @@
 # and packages the binaries for consumption by Yocto WIC
 #
 
-set -e
+set -eo pipefail
 
 # Configuration
 UBOOT_REPO="https://github.com/friendlyarm/uboot-rockchip.git"

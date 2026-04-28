@@ -1,15 +1,13 @@
 #!/bin/bash
 
-while [ 1 ]; do
-   rm /tmp/collector
+while :; do
+   # Truncate (vs rm+create) so we never have a missing-file race against readers.
+   : > /tmp/collector
    date > /tmp/collector
-   cat /dev/vcs1 >> /tmp/collector
-   cat /dev/vcs2 >> /tmp/collector
-   cat  /dev/vcs3 >> /tmp/collector
-   cat  /dev/vcs4 >> /tmp/collector
-   cat  /dev/vcs5 >> /tmp/collector
-   cat  /dev/vcs6 >> /tmp/collector
+   for n in 1 2 3 4 5 6; do
+       [ -r "/dev/vcs${n}" ] && cat "/dev/vcs${n}" >> /tmp/collector
+   done
 
-   echo "`cat /tmp/collector | sed -e 's,\(.\{80\}\),\1\\n,g' `" > /tmp/log_collector
+   sed -e 's,\(.\{80\}\),\1\n,g' /tmp/collector > /tmp/log_collector
    sleep 4
 done

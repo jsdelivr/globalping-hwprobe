@@ -13,7 +13,7 @@ fi
 
 export GP_HOST_HW=true
 export GP_HOST_DEVICE=v2
-export GP_HOST_FIRMWARE=18.0.0.1
+export GP_HOST_FIRMWARE=19.0.5
 
 # Docker read-only mode configuration
 # Default: false (--read-only flag NOT used)
@@ -47,8 +47,14 @@ init_docker_repo() {
     # Load frozen image
     echo "Loading globalping-probe image from frozen container" > /dev/tty3
     if [ -f /JSDELIVR_BASE_CONTAINER/globalping-probe.frozen ]; then
-        cat /JSDELIVR_BASE_CONTAINER/globalping-probe.frozen | /usr/bin/docker load > /dev/tty3
-        echo "Image loaded successfully" > /dev/tty3
+        if /usr/bin/docker load < /JSDELIVR_BASE_CONTAINER/globalping-probe.frozen > /dev/tty3; then
+            echo "Image loaded successfully" > /dev/tty3
+        else
+            echo "ERROR: docker load failed for frozen container" > /dev/tty3
+            echo "ERROR: docker load failed for frozen container" > /dev/console
+            led_boot_failed
+            while :; do sleep 60; done
+        fi
     else
         echo "ERROR: Frozen container image not found at /JSDELIVR_BASE_CONTAINER/globalping-probe.frozen" > /dev/tty3
         echo "ERROR: Frozen container image not found" > /dev/console

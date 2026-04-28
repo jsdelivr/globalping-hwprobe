@@ -2,7 +2,7 @@
 # Setup FriendlyElec source repositories for local builds
 # This script clones all necessary repositories and records their versions
 
-set -e
+set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCES_DIR="${SCRIPT_DIR}/sources"
@@ -26,12 +26,12 @@ clone_or_update() {
         echo "Repository ${repo_dir} already exists, updating..."
         cd "${repo_dir}"
         git fetch origin
-        git checkout ${branch}
-        git pull origin ${branch}
+        git checkout "${branch}"
+        git pull origin "${branch}"
         cd ..
     else
         echo "Cloning ${repo_url} (branch: ${branch})..."
-        git clone -b ${branch} ${repo_url} ${repo_dir}
+        git clone -b "${branch}" "${repo_url}" "${repo_dir}"
     fi
 }
 
