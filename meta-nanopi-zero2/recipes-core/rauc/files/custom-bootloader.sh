@@ -16,16 +16,30 @@ PARTED="/usr/sbin/parted"
 GREP="/bin/grep"
 LOGGER="/usr/bin/logger"
 
-DISK="/dev/mmcblk2"
+# Derive boot disk from /proc/mounts so RAUC slot flips target the disk we
+# actually booted from (mmcblk2 eMMC in production; mmcblk0 if the same image
+# is dd'd to an SD card for testing). Falls back to mmcblk2 on detection
+# failure to preserve the previous behavior.
+ROOT_DEV_EARLY=$($GREP ' / ' /proc/mounts 2>/dev/null | head -n 1 | cut -d' ' -f1)
+case "$ROOT_DEV_EARLY" in
+    /dev/mmcblk0p*) DISK="/dev/mmcblk0" ;;
+    /dev/mmcblk2p*) DISK="/dev/mmcblk2" ;;
+    *)              DISK="/dev/mmcblk2" ;;
+esac
 ROOTFS_A_PARTNUM=3
 ROOTFS_B_PARTNUM=4
 PERSIST_DIR="/persist/rauc"
 
-# Ensure /persist is remounted ro on unexpected exit
+# Pre-install opens /persist rw and post-install closes it; don't fight that.
+PERSIST_OPENED_BY_US=0
 cleanup_persist() {
-    mount -o remount,ro /persist 2>/dev/null || true
+    [ "$PERSIST_OPENED_BY_US" -eq 1 ] && mount -o remount,ro /persist 2>/dev/null || true
 }
 trap cleanup_persist EXIT
+
+persist_is_rw() {
+    awk '$2 == "/persist" {print $4}' /proc/mounts 2>/dev/null | grep -qE '^rw($|,)'
+}
 
 log() {
     echo "[rauc-bootloader] $*" >&2
@@ -33,10 +47,10 @@ log() {
 }
 
 get_primary() {
-    # Check which partition has legacy_boot flag
-    if $PARTED -s "$DISK" print 2>/dev/null | $GREP -E "^\s*${ROOTFS_A_PARTNUM}\s" | $GREP -q "legacy_boot"; then
+    PARTED_OUT=$($PARTED -s "$DISK" print 2>/dev/null)
+    if echo "$PARTED_OUT" | $GREP -E "^\s*${ROOTFS_A_PARTNUM}\s" | $GREP -q "legacy_boot"; then
         echo "a"
-    elif $PARTED -s "$DISK" print 2>/dev/null | $GREP -E "^\s*${ROOTFS_B_PARTNUM}\s" | $GREP -q "legacy_boot"; then
+    elif echo "$PARTED_OUT" | $GREP -E "^\s*${ROOTFS_B_PARTNUM}\s" | $GREP -q "legacy_boot"; then
         echo "b"
     else
         # Default to current slot from kernel cmdline, or 'a' if not found
@@ -95,14 +109,28 @@ set_state() {
     log "Setting state for slot $SLOT to: $STATE"
 
     STATE_FILE="${PERSIST_DIR}/state-${SLOT}"
-    if [ -d "${PERSIST_DIR}" ]; then
-        mount -o remount,rw /persist 2>/dev/null || true
-        echo "${STATE}" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "${STATE_FILE}"
+    if ! mountpoint -q /persist; then
+        log "ERROR: /persist not mounted - state for slot $SLOT NOT persisted"
+        return 1
+    fi
+    if ! persist_is_rw; then
+        if ! mount -o remount,rw /persist 2>/dev/null; then
+            log "ERROR: failed to remount /persist rw - state for slot $SLOT NOT persisted"
+            return 1
+        fi
+        PERSIST_OPENED_BY_US=1
+    fi
+    mkdir -p "${PERSIST_DIR}"
+    if echo "${STATE}" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "${STATE_FILE}"; then
         sync
-        mount -o remount,ro /persist 2>/dev/null || true
         log "Persisted state for slot $SLOT: $STATE"
     else
-        log "Warning: /persist/rauc not available, state not persisted"
+        log "ERROR: failed to write state file for slot $SLOT"
+        rm -f "${STATE_FILE}.tmp"
+    fi
+    if [ "$PERSIST_OPENED_BY_US" -eq 1 ]; then
+        mount -o remount,ro /persist 2>/dev/null || true
+        PERSIST_OPENED_BY_US=0
     fi
 }
 

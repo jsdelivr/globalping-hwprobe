@@ -22,7 +22,7 @@
 
 part loader1   --offset 64s    --fixed-size 3552K --fstype=none --part-name loader1   --source rawcopy --sourceparams="file=idbloader.img"
 part loader2   --offset 16384s --fixed-size 4096K --fstype=none --part-name loader2   --source rawcopy --sourceparams="file=uboot.img"
-part /         --offset 32768s --size 1G --label rootfs  --active           --fstype=ext4 --part-name rootfs    --source rootfs
+part /         --offset 32768s --size 1G --label rootfs  --active           --fstype=ext4 --part-name rootfs    --source rootfs --no-fstab-update
 part /persist  --size 50M --label persist --fstype=ext4 --part-name persist
 
 bootloader --ptable gpt

@@ -27,11 +27,8 @@ REQUIRED_SERVICES="docker.service"
 # Minimum uptime in seconds before considering boot successful
 MIN_UPTIME=30
 
-# Persist partition settings for rollback
+# Persist partition settings (rollback is now owned by rauc-boot-check.sh)
 PERSIST_DIR="/persist/rauc"
-DISK="/dev/mmcblk2"
-ROOTFS_A_PARTNUM=3
-ROOTFS_B_PARTNUM=4
 
 # Ensure /persist is remounted ro on unexpected exit
 cleanup_persist() {
@@ -39,27 +36,9 @@ cleanup_persist() {
 }
 trap cleanup_persist EXIT
 
-set_rollback_leds() {
-    # Both LEDs solid to signal rollback in progress
-    SYS_LED="/sys/class/leds/sys_led/brightness"
-    USER_LED="/sys/class/leds/user_led/brightness"
-    if [ -f "$SYS_LED" ]; then
-        echo 1 > "$SYS_LED" 2>/dev/null || true
-    fi
-    if [ -f "$USER_LED" ]; then
-        echo 1 > "$USER_LED" 2>/dev/null || true
-    fi
-}
-
 log() {
     echo "[${LOG_TAG}] $*"
     $LOGGER -t "${LOG_TAG}" "$*" 2>/dev/null || true
-}
-
-error() {
-    log "ERROR: $*"
-    echo "error: $*" >> "${GOOD_STATUS_FILE}"
-    exit 1
 }
 
 log "Starting boot validation..."
@@ -140,18 +119,27 @@ EOF
 
     log "Slot ${BOOT_SLOT:-unknown} marked as good"
 
-    # Reset boot counter and persist good state
-    if [ -d "${PERSIST_DIR}" ] && [ -n "${BOOT_SLOT}" ] && [ "${BOOT_SLOT}" != "unknown" ]; then
-        mount -o remount,rw /persist 2>/dev/null || true
-        echo "0" > "${PERSIST_DIR}/boot-count-${BOOT_SLOT}.tmp" && \
-            mv "${PERSIST_DIR}/boot-count-${BOOT_SLOT}.tmp" "${PERSIST_DIR}/boot-count-${BOOT_SLOT}"
-        echo "good" > "${PERSIST_DIR}/state-${BOOT_SLOT}.tmp" && \
-            mv "${PERSIST_DIR}/state-${BOOT_SLOT}.tmp" "${PERSIST_DIR}/state-${BOOT_SLOT}"
-        sync
-        mount -o remount,ro /persist 2>/dev/null || true
-        log "Boot counter reset and state set to good for slot ${BOOT_SLOT}"
+    # Reset boot counter and persist good state.
+    # mountpoint -q (not [ -d ${PERSIST_DIR} ]) — without a real mount check
+    # writes can land in a rootfs overlay and be lost on reboot, leaving the
+    # next rauc-boot-check still seeing the pre-validation counter and
+    # eventually triggering an unwanted rollback.
+    if [ -n "${BOOT_SLOT}" ] && [ "${BOOT_SLOT}" != "unknown" ] && mountpoint -q /persist; then
+        if mount -o remount,rw /persist 2>/dev/null; then
+            mkdir -p "${PERSIST_DIR}"
+            echo "0" > "${PERSIST_DIR}/boot-count-${BOOT_SLOT}.tmp" && \
+                mv "${PERSIST_DIR}/boot-count-${BOOT_SLOT}.tmp" "${PERSIST_DIR}/boot-count-${BOOT_SLOT}"
+            echo "good" > "${PERSIST_DIR}/state-${BOOT_SLOT}.tmp" && \
+                mv "${PERSIST_DIR}/state-${BOOT_SLOT}.tmp" "${PERSIST_DIR}/state-${BOOT_SLOT}"
+            sync
+            mount -o remount,ro /persist 2>/dev/null || \
+                log "WARNING: failed to remount /persist ro after writing state"
+            log "Boot counter reset and state set to good for slot ${BOOT_SLOT}"
+        else
+            log "ERROR: failed to remount /persist rw - validation state NOT persisted"
+        fi
     else
-        log "Warning: Cannot persist state - /persist/rauc not available or slot unknown"
+        log "Warning: Cannot persist state - /persist not mounted or slot unknown"
     fi
 
     log "Boot validation completed successfully"

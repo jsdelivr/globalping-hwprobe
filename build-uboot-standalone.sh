@@ -20,29 +20,20 @@ BOARD="nanopi_zero2"
 YOCTO_BUILD="${PWD}/build"
 SDK_PATH="${YOCTO_BUILD}/tmp/deploy/sdk"
 
-# Check for installed Yocto SDK
+ENV_SETUP=""
 if [ -d "/opt/poky" ]; then
-    ENV_SETUP=$(ls /opt/poky/environment-setup-* 2>/dev/null | head -1)
-    if [ -n "$ENV_SETUP" ]; then
-        echo "Using installed Yocto SDK from /opt/poky"
-        source "$ENV_SETUP"
-        CROSS_COMPILE="aarch64-poky-linux-"
-    fi
-elif [ -d "/opt/poky" ] && ls /opt/poky/environment-setup-*poky-linux 2>/dev/null | grep -q .; then
+    ENV_SETUP=$(find /opt/poky -maxdepth 1 -name 'environment-setup-*' -print -quit 2>/dev/null)
+fi
+if [ -n "$ENV_SETUP" ]; then
     echo "Using installed Yocto SDK from /opt/poky"
-    SDK_SETUP=$(ls /opt/poky/environment-setup-*poky-linux 2>/dev/null | head -1)
-    source "${SDK_SETUP}"
+    source "$ENV_SETUP"
     CROSS_COMPILE="aarch64-poky-linux-"
-# Check for Yocto SDK installer
-elif [ -f "${SDK_PATH}/poky-glibc-x86_64-meta-toolchain-cortexa53-crypto-nanopi-zero2-toolchain"*.sh ]; then
-    SDK_INSTALLER=$(ls -t ${SDK_PATH}/poky-glibc-x86_64-meta-toolchain-*.sh 2>/dev/null | head -1)
+elif SDK_INSTALLER=$(find "${SDK_PATH}" -maxdepth 1 -name 'poky-glibc-x86_64-meta-toolchain-*.sh' -print -quit 2>/dev/null) && [ -n "$SDK_INSTALLER" ]; then
     echo "Found Yocto SDK installer: ${SDK_INSTALLER}"
     echo "To install: ${SDK_INSTALLER}"
     echo "Then run this script again"
     exit 1
-# Use system cross-compiler
 elif command -v aarch64-linux-gnu-gcc &> /dev/null; then
-    # Use system cross-compiler
     CROSS_COMPILE="aarch64-linux-gnu-"
     echo "Using system cross-compiler: ${CROSS_COMPILE}"
 else
