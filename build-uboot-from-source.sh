@@ -2,7 +2,7 @@
 # Build U-Boot from FriendlyElec source for NanoPi Zero2 (RK3528)
 # This builds U-Boot outside of Yocto due to 2017.09 compatibility issues
 
-set -e
+set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCES_DIR="${SCRIPT_DIR}/sources"

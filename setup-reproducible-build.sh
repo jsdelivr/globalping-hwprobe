@@ -2,7 +2,7 @@
 # Master script to setup reproducible build environment
 # This fetches all sources and builds components from known-good versions
 
-set -e
+set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

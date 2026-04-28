@@ -21,7 +21,7 @@
 #   - Loaded and started at boot by jsdelivr-container-loader.sh
 #
 
-set -e
+set -eo pipefail
 
 # Colors
 RED='\033[0;31m'

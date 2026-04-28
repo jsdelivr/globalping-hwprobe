@@ -2,7 +2,7 @@
 # Update kernel recipe to use specific SRCREV instead of AUTOREV
 # This ensures reproducible builds with a known-working kernel version
 
-set -e
+set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCES_DIR="${SCRIPT_DIR}/sources"

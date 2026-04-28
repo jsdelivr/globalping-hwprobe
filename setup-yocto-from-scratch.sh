@@ -12,7 +12,7 @@
 #   ./setup-yocto-from-scratch.sh [--skip-build] [-y|--yes]
 #
 
-set -e
+set -eo pipefail
 
 # Colors
 RED='\033[0;31m'
