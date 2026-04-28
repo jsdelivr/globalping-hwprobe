@@ -1,6 +1,7 @@
 import json
-import subprocess
 import os
+import re
+import subprocess
 from pathlib import Path
 from flask import Flask, jsonify, request, Response
 
@@ -22,17 +23,29 @@ DEFAULT_CONFIG = {
 
 # Default application settings (stored as individual bash-compatible files)
 DEFAULT_SETTINGS = {
-    'sshLogsPassword': '',
-    'webApiEnabled': False,
+    'webApiEnabled': True,
     'webApiPassword': ''
 }
 
 # Settings file names (bash-compatible format)
 SETTINGS_FILES = {
-    'sshLogsPassword': 'sshLogsPassword',
     'webApiEnabled': 'webApiEnabled',
     'webApiPassword': 'webApiPassword'
 }
+
+# Settings whose values must never be returned to API clients or written to logs.
+SECRET_SETTINGS = ('webApiPassword',)
+
+
+def redact_settings(settings):
+    """Return a copy of settings with secret values masked, for safe logging
+    or API responses. Booleans pass through; secret strings become a fixed
+    placeholder so callers cannot tell whether a value is set or empty."""
+    redacted = dict(settings)
+    for key in SECRET_SETTINGS:
+        if key in redacted:
+            redacted[key] = '***' if redacted[key] else ''
+    return redacted
 
 
 def remount_persist_rw():
@@ -41,7 +54,7 @@ def remount_persist_rw():
     Returns True if successful, False otherwise.
     """
     try:
-        result = subprocess.run(
+        subprocess.run(
             ['mount', '-o', 'remount,rw', PERSIST_MOUNT],
             capture_output=True,
             text=True,
@@ -63,7 +76,7 @@ def remount_persist_ro():
     Returns True if successful, False otherwise.
     """
     try:
-        result = subprocess.run(
+        subprocess.run(
             ['mount', '-o', 'remount,ro', PERSIST_MOUNT],
             capture_output=True,
             text=True,
@@ -164,8 +177,14 @@ def write_bash_setting_file(filename, setting_name, value):
     file_path = Path(SETTINGS_DIR) / filename
 
     try:
-        # Ensure the parent directory exists
-        file_path.parent.mkdir(parents=True, exist_ok=True)
+        # Lock down the parent directory and the file mode explicitly. With
+        # the process umask (often 0022) the file would land 0644 and the
+        # password fields would be world-readable. Force 0700/0600.
+        file_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        try:
+            os.chmod(file_path.parent, 0o700)
+        except OSError:
+            pass  # best-effort; mkdir may have already set it
 
         # Format value for bash with proper quoting
         if isinstance(value, bool):
@@ -178,11 +197,23 @@ def write_bash_setting_file(filename, setting_name, value):
             # Wrap in single quotes to prevent command injection
             bash_value = f"'{escaped_value}'"
 
-        # Write in bash variable format
+        # Write in bash variable format. Open with explicit 0o600 so the file
+        # is never world-readable even if it already existed with looser perms.
         content = f"{setting_name}={bash_value}\n"
-
-        with open(file_path, 'w') as f:
-            f.write(content)
+        fd = os.open(file_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            with os.fdopen(fd, 'w') as f:
+                f.write(content)
+        except Exception:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+            raise
+        try:
+            os.chmod(file_path, 0o600)
+        except OSError:
+            pass
 
         return True
     except (IOError, OSError) as e:
@@ -251,14 +282,14 @@ def create_default_settings():
         return False
 
     try:
+        success = True
         for setting_name, filename in files_to_create:
             default_value = DEFAULT_SETTINGS[setting_name]
             if write_bash_setting_file(filename, setting_name, default_value):
                 print(f"Created default settings file: {SETTINGS_DIR}/{filename}")
             else:
                 print(f"Warning: Failed to create {filename}")
-
-        success = True
+                success = False
     except Exception as e:
         print(f"Error creating default settings files: {e}")
         success = False
@@ -287,7 +318,12 @@ def save_settings(new_settings):
     """
     Save application settings to individual bash-style files in /persist.
     Remounts /persist as RW, writes the files, then remounts as RO.
-    Returns (success: bool, error_message: str or None)
+
+    Validates every entry before any write. Writes one file at a time and
+    stops on the first failure. Earlier entries in the batch may already be
+    committed when a later entry fails — callers should treat a 5xx response
+    as "state unknown" and re-read /settings to reconcile.
+    Returns (success: bool, error_message: str or None).
     """
     # Validate that only known settings are being updated
     valid_keys = set(SETTINGS_FILES.keys())
@@ -297,37 +333,34 @@ def save_settings(new_settings):
         invalid_keys = provided_keys - valid_keys
         return False, f"Invalid setting keys: {invalid_keys}. Valid keys are: {valid_keys}"
 
+    # PHASE 1: validate every entry before touching disk. A type error in
+    # one field used to commit earlier fields and surface a 4xx — the device
+    # ended up partially updated.
+    type_errors = []
+    for setting_name, value in new_settings.items():
+        if setting_name == 'webApiEnabled' and not isinstance(value, bool):
+            type_errors.append(f"{setting_name} must be a boolean")
+        elif setting_name in SECRET_SETTINGS and not isinstance(value, str):
+            type_errors.append(f"{setting_name} must be a string")
+    if type_errors:
+        return False, "; ".join(type_errors)
+
     # Remount /persist as read-write. If the remount itself failed, attempt
-    # a best-effort remount-RO so we never leave /persist accidentally writable
-    # (e.g. partial systemd reports + actual mount race).
+    # a best-effort remount-RO so we never leave /persist accidentally writable.
     if not remount_persist_rw():
         remount_persist_ro()
         return False, "Failed to remount /persist as read-write"
 
     try:
-        failed_settings = []
-
-        # Write each setting to its individual file
+        # PHASE 2: write all entries. write_bash_setting_file is itself
+        # atomic-ish (os.open with O_TRUNC + 0o600). On the first failure,
+        # stop and report — earlier entries are committed.
         for setting_name, value in new_settings.items():
             filename = SETTINGS_FILES[setting_name]
-
-            # Validate type for webApiEnabled
-            if setting_name == 'webApiEnabled' and not isinstance(value, bool):
-                failed_settings.append(f"{setting_name} must be a boolean")
-                continue
-
-            # Validate type for password fields
-            if setting_name in ['sshLogsPassword', 'webApiPassword'] and not isinstance(value, str):
-                failed_settings.append(f"{setting_name} must be a string")
-                continue
-
-            # Write the setting file
             if not write_bash_setting_file(filename, setting_name, value):
-                failed_settings.append(f"Failed to write {setting_name}")
-
-        if failed_settings:
-            error_msg = "; ".join(failed_settings)
-            success = False
+                error_msg = f"Failed to write {setting_name}"
+                success = False
+                break
         else:
             print(f"Settings saved to {SETTINGS_DIR}")
             success = True
@@ -341,6 +374,28 @@ def save_settings(new_settings):
         remount_persist_ro()
 
     return success, error_msg
+
+
+@app.before_request
+def _enforce_webapi_enabled():
+    # Always allow the webApiEnabled setting to be inspected and re-enabled
+    # so an operator who disabled the API can recover without SSH.
+    # GET /settings/webApiEnabled and PUT /settings/webApiEnabled/<value>.
+    if request.path == '/settings/webApiEnabled' or \
+       request.path.startswith('/settings/webApiEnabled/'):
+        return None
+
+    enabled = read_bash_setting_file(
+        SETTINGS_FILES['webApiEnabled'],
+        'webApiEnabled',
+        DEFAULT_SETTINGS['webApiEnabled'],
+    )
+    if not enabled:
+        return jsonify({
+            'error': 'API disabled',
+            'details': 'webApiEnabled is false. PUT /settings/webApiEnabled/true to re-enable.'
+        }), 403
+    return None
 
 
 @app.route('/containers', methods=['GET'])
@@ -401,7 +456,7 @@ def get_container_logs(name):
     try:
         # First, get the container ID using docker ps with filter
         ps_result = subprocess.run(
-            ['docker', 'ps', '--all', '--latest', '--filter', f'name={name}', '--quiet'],
+            ['docker', 'ps', '--all', '--latest', '--filter', f'name=^{re.escape(name)}$', '--quiet'],
             capture_output=True,
             text=True,
             check=True
@@ -462,7 +517,7 @@ def stop_container(name):
     try:
         # First, get the container ID using docker ps with filter
         ps_result = subprocess.run(
-            ['docker', 'ps', '--all', '--latest', '--filter', f'name={name}', '--quiet'],
+            ['docker', 'ps', '--all', '--latest', '--filter', f'name=^{re.escape(name)}$', '--quiet'],
             capture_output=True,
             text=True,
             check=True
@@ -476,8 +531,8 @@ def stop_container(name):
                 'details': f'No container found with name: {name}'
             }), 404
 
-        # Execute docker stop command
-        stop_result = subprocess.run(
+        # Execute docker stop command (raises CalledProcessError on failure)
+        subprocess.run(
             ['docker', 'stop', container_id],
             capture_output=True,
             text=True,
@@ -519,7 +574,7 @@ def start_container(name):
     try:
         # First, get the container ID using docker ps with filter
         ps_result = subprocess.run(
-            ['docker', 'ps', '--all', '--latest', '--filter', f'name={name}', '--quiet'],
+            ['docker', 'ps', '--all', '--latest', '--filter', f'name=^{re.escape(name)}$', '--quiet'],
             capture_output=True,
             text=True,
             check=True
@@ -533,8 +588,8 @@ def start_container(name):
                 'details': f'No container found with name: {name}'
             }), 404
 
-        # Execute docker start command
-        start_result = subprocess.run(
+        # Execute docker start command (raises CalledProcessError on failure)
+        subprocess.run(
             ['docker', 'start', container_id],
             capture_output=True,
             text=True,
@@ -570,12 +625,14 @@ def get_settings():
     """
     Returns the current application settings.
     Settings are read from individual bash-compatible files in /persist:
-    - sshLogsPassword
     - webApiEnabled
     - webApiPassword
     """
     try:
-        settings = load_settings()
+        # Redact secret fields before sending to a client; otherwise GET
+        # /settings would echo back webApiPassword in plaintext to whoever
+        # can reach the API.
+        settings = redact_settings(load_settings())
 
         return jsonify({
             'status': 'success',
@@ -595,7 +652,6 @@ def get_setting(setting_name):
     Returns a specific application setting.
 
     Valid setting names:
-    - sshLogsPassword
     - webApiEnabled
     - webApiPassword
     """
@@ -611,6 +667,12 @@ def get_setting(setting_name):
         filename = SETTINGS_FILES[setting_name]
         default_value = DEFAULT_SETTINGS[setting_name]
         value = read_bash_setting_file(filename, setting_name, default_value)
+
+        # Redact secret fields. Callers that need to know whether a secret
+        # is set vs empty can use a separate "is set" probe; we never echo
+        # the actual value back.
+        if setting_name in SECRET_SETTINGS:
+            value = '***' if value else ''
 
         return jsonify({
             'status': 'success',
@@ -631,12 +693,10 @@ def update_setting(setting_name, value):
     Updates a specific application setting via URL path.
 
     Valid setting names:
-    - sshLogsPassword (string): Password for SSH logs
     - webApiEnabled (boolean): Enable/disable web API (use 'true' or 'false')
     - webApiPassword (string): Password for web API
 
     Examples:
-    PUT /settings/sshLogsPassword/mypassword
     PUT /settings/webApiEnabled/true
     PUT /settings/webApiPassword/apipass123
     """
@@ -668,15 +728,18 @@ def update_setting(setting_name, value):
         success, error_msg = save_settings({setting_name: typed_value})
 
         if success:
-            # Read back the saved value to confirm
+            # Read back the saved value to confirm. Redact secret fields:
+            # echoing the just-set password back to the caller would also
+            # land in any access-log proxy on the way out.
             filename = SETTINGS_FILES[setting_name]
             saved_value = read_bash_setting_file(filename, setting_name, DEFAULT_SETTINGS[setting_name])
+            response_value = '***' if (setting_name in SECRET_SETTINGS and saved_value) else saved_value
 
             return jsonify({
                 'status': 'success',
                 'message': f'Setting {setting_name} updated successfully',
                 'setting_name': setting_name,
-                'value': saved_value,
+                'value': response_value,
                 'file': f"{SETTINGS_DIR}/{filename}"
             }), 200
         else:
@@ -702,19 +765,16 @@ def update_settings():
     Supports partial updates - only send the fields you want to change.
 
     Valid settings:
-    - sshLogsPassword (string): Password for SSH logs
     - webApiEnabled (boolean): Enable/disable web API
     - webApiPassword (string): Password for web API
 
     Example:
     {
-      "sshLogsPassword": "mypassword",
       "webApiEnabled": true,
       "webApiPassword": "apipassword"
     }
 
     Files are written in bash-compatible format:
-    sshLogsPassword=mypassword
     webApiEnabled=true
     webApiPassword=apipassword
     """
@@ -737,8 +797,9 @@ def update_settings():
         success, error_msg = save_settings(new_settings)
 
         if success:
-            # Read back the saved settings to confirm
-            saved_settings = load_settings()
+            # Read back the saved settings to confirm. Redact secret fields
+            # before sending to the client.
+            saved_settings = redact_settings(load_settings())
 
             return jsonify({
                 'status': 'success',
@@ -781,11 +842,18 @@ if __name__ == '__main__':
     # Initialize default settings files if they don't exist
     create_default_settings()
 
-    print(f"Starting Flask app with configuration:")
-    print(f"  Host: {config['host']}")
+    # The API has no auth gate. Force bind to loopback so it is only reachable
+    # via localhost on the device (or via SSH port-forward). Ignore any host
+    # override from the config file or FLASK_HOST env var.
+    bind_host = '127.0.0.1'
+    if config.get('host') != bind_host:
+        print(f"Ignoring config host '{config.get('host')}' — forcing bind to {bind_host}")
+
+    print("Starting Flask app with configuration:")
+    print(f"  Host: {bind_host}")
     print(f"  Port: {config['port']}")
     print(f"  Debug: {config['debug']}")
     print(f"  Config file: {CONFIG_FILE}")
     print(f"  Settings dir: {SETTINGS_DIR}")
 
-    app.run(host=config['host'], port=config['port'], debug=config['debug'])
+    app.run(host=bind_host, port=config['port'], debug=config['debug'])

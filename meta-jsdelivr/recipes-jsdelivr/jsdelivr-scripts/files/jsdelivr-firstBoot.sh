@@ -113,17 +113,8 @@ log "Using rootfs partition: ${BOOT_DEVICE}${ROOTFS_PART}"
 # =========================================================================
 log "STEP 1: Generating device identity..."
 
-# /persist is mounted read-only by default for safety
-# Remount as read-write temporarily to make changes
-log "Remounting /persist as read-write..."
-if ! mount -o remount,rw /persist; then
-    log "FATAL - Failed to remount /persist as read-write!"
-    log "Current mount status:"
-    mount | grep persist | tee /dev/console > /dev/tty3 2>/dev/null || true
-    log "NOT rebooting to prevent reboot loop"
-    exit 1
-fi
-log "Remounted /persist as read-write"
+# /persist was already remounted rw above (in-progress tombstone block).
+# Skip a duplicate remount to avoid a redundant FATAL handler on a no-op.
 
 # Create identity directory
 log "Creating identity directories..."
@@ -219,15 +210,19 @@ log "STEP 3: Setting up docker partitions on /dev/${BOOT_DEVICE}"
 if [ -b "/dev/disk/by-label/docker" ] && [ -b "/dev/disk/by-label/docker_persist" ]; then
     log "Docker partitions already exist (labels found), skipping creation"
 else
+    # Pin LANG so parted's output stays English; we parse it below by string
+    # match against "Disk " / size headers.
+    export LC_ALL=C
+
     # Fix GPT table to use all available space
-    parted /dev/${BOOT_DEVICE} --script --fix print 2>/dev/null || true
+    parted "/dev/${BOOT_DEVICE}" --script --fix print 2>/dev/null || true
 
     # Get disk size in MB
-    DISK_SIZE_MB=$(parted /dev/${BOOT_DEVICE} --script -- unit MB print | grep "^Disk /dev/${BOOT_DEVICE}" | awk '{print $3}' | sed 's/MB//')
+    DISK_SIZE_MB=$(parted "/dev/${BOOT_DEVICE}" --script -- unit MB print | grep "^Disk /dev/${BOOT_DEVICE}" | awk '{print $3}' | sed 's/MB//')
 
     # Find the last partition number and its end position
-    LAST_PART_NUM=$(parted /dev/${BOOT_DEVICE} --script -- unit MB print | grep "^ " | awk '{print $1}' | sort -n | tail -1)
-    LAST_PART_END=$(parted /dev/${BOOT_DEVICE} --script -- unit MB print | grep "^ ${LAST_PART_NUM}" | awk '{print $3}' | sed 's/MB//')
+    LAST_PART_NUM=$(parted "/dev/${BOOT_DEVICE}" --script -- unit MB print | grep "^ " | awk '{print $1}' | sort -n | tail -1)
+    LAST_PART_END=$(parted "/dev/${BOOT_DEVICE}" --script -- unit MB print | grep "^ ${LAST_PART_NUM}" | awk '{print $3}' | sed 's/MB//')
 
     log "Last partition is ${LAST_PART_NUM}, ends at ${LAST_PART_END}MB, disk size ${DISK_SIZE_MB}MB"
 
@@ -249,24 +244,39 @@ else
             DOCKER_PERSIST_START="${DOCKER_END}"
             DOCKER_PERSIST_END=$((DISK_SIZE_MB - 1))
 
+            # Each destructive step exits via the existing "FATAL"/in-progress
+            # flag pattern so the next boot bails (operator must investigate)
+            # rather than re-running mkpart/mkfs on a half-partitioned disk.
             log "Creating partition ${DOCKER_PART_NUM} (docker) from ${DOCKER_START}MB to ${DOCKER_END}MB"
-            parted -a optimal /dev/${BOOT_DEVICE} --script -- mkpart primary ext4 ${DOCKER_START}MB ${DOCKER_END}MB
+            if ! parted -a optimal "/dev/${BOOT_DEVICE}" --script -- mkpart primary ext4 "${DOCKER_START}MB" "${DOCKER_END}MB"; then
+                log "FATAL - mkpart docker failed on /dev/${BOOT_DEVICE}"
+                exit 1
+            fi
 
             log "Creating partition ${DOCKER_PERSIST_PART_NUM} (docker_persist) from ${DOCKER_PERSIST_START}MB to ${DOCKER_PERSIST_END}MB"
-            parted -a optimal /dev/${BOOT_DEVICE} --script -- mkpart primary ext4 ${DOCKER_PERSIST_START}MB ${DOCKER_PERSIST_END}MB
+            if ! parted -a optimal "/dev/${BOOT_DEVICE}" --script -- mkpart primary ext4 "${DOCKER_PERSIST_START}MB" "${DOCKER_PERSIST_END}MB"; then
+                log "FATAL - mkpart docker_persist failed on /dev/${BOOT_DEVICE}"
+                exit 1
+            fi
 
-            partprobe /dev/${BOOT_DEVICE}
+            partprobe "/dev/${BOOT_DEVICE}" || log "WARNING - partprobe failed; mkfs may not see the new partitions"
             sleep 2
 
             log "Formatting partition ${DOCKER_PART_NUM} (docker) as ext4"
-            mkfs.ext4 -F -L docker /dev/${BOOT_DEVICE}p${DOCKER_PART_NUM}
+            if ! mkfs.ext4 -F -L docker "/dev/${BOOT_DEVICE}p${DOCKER_PART_NUM}"; then
+                log "FATAL - mkfs.ext4 failed on /dev/${BOOT_DEVICE}p${DOCKER_PART_NUM} (docker)"
+                exit 1
+            fi
             log "Formatting partition ${DOCKER_PERSIST_PART_NUM} (docker_persist) as ext4"
-            mkfs.ext4 -F -L docker_persist /dev/${BOOT_DEVICE}p${DOCKER_PERSIST_PART_NUM}
+            if ! mkfs.ext4 -F -L docker_persist "/dev/${BOOT_DEVICE}p${DOCKER_PERSIST_PART_NUM}"; then
+                log "FATAL - mkfs.ext4 failed on /dev/${BOOT_DEVICE}p${DOCKER_PERSIST_PART_NUM} (docker_persist)"
+                exit 1
+            fi
 
             # Create subdirectories on docker_persist partition
             log "Creating subdirectories on docker_persist"
             mkdir -p /tmp/docker_persist
-            if mount /dev/${BOOT_DEVICE}p${DOCKER_PERSIST_PART_NUM} /tmp/docker_persist; then
+            if mount "/dev/${BOOT_DEVICE}p${DOCKER_PERSIST_PART_NUM}" /tmp/docker_persist; then
                 mkdir -p /tmp/docker_persist/wireguard
                 mkdir -p /tmp/docker_persist/speedtest
                 umount /tmp/docker_persist
@@ -300,7 +310,11 @@ INACTIVE_MOUNT="/tmp/rauc-inactive"
 mkdir -p "$INACTIVE_MOUNT"
 if mount "$INACTIVE_PART" "$INACTIVE_MOUNT" 2>/dev/null; then
     if [ -d "$INACTIVE_MOUNT/boot/extlinux" ]; then
-        cat > "$INACTIVE_MOUNT/boot/extlinux/extlinux.conf.tmp" <<EXTEOF
+        # Atomic write: heredoc into .tmp + sync + mv. Avoids leaving the
+        # inactive slot's extlinux.conf truncated on power loss mid-write.
+        EXTLINUX_TMP="$INACTIVE_MOUNT/boot/extlinux/extlinux.conf.tmp"
+        EXTLINUX_FINAL="$INACTIVE_MOUNT/boot/extlinux/extlinux.conf"
+        if cat > "$EXTLINUX_TMP" <<EXTEOF
 # Extlinux configuration for NanoPi Zero2 (RAUC A/B Boot - Slot ${INACTIVE_SLOT})
 # Auto-generated by firstBoot.sh
 label Yocto Linux Slot ${INACTIVE_SLOT}
@@ -308,8 +322,18 @@ label Yocto Linux Slot ${INACTIVE_SLOT}
     fdt /boot/rk3528-nanopi-rev01.dtb
     append root=PARTLABEL=rootfs-${INACTIVE_SLOT} rauc.slot=${INACTIVE_SLOT} rootwait rootfstype=ext4 console=ttyFIQ0,1500000n8 earlycon=uart8250,mmio32,0xff9f0000
 EXTEOF
-        mv "$INACTIVE_MOUNT/boot/extlinux/extlinux.conf.tmp" "$INACTIVE_MOUNT/boot/extlinux/extlinux.conf"
-        log "Updated extlinux.conf for slot ${INACTIVE_SLOT}"
+        then
+            sync
+            if mv "$EXTLINUX_TMP" "$EXTLINUX_FINAL"; then
+                log "Updated extlinux.conf for slot ${INACTIVE_SLOT}"
+            else
+                log "WARNING: Failed to install extlinux.conf on inactive slot"
+                rm -f "$EXTLINUX_TMP"
+            fi
+        else
+            log "WARNING: Failed to write extlinux.conf.tmp on inactive slot"
+            rm -f "$EXTLINUX_TMP"
+        fi
     else
         log "WARNING: No boot/extlinux directory on inactive slot"
     fi

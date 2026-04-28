@@ -117,19 +117,21 @@ create_volumes() {
     done
 }
 
-# Build volume arguments for docker run
+# Build volume arguments for docker run.
+# Each helper prints ONE argv token per line so the caller can read them with
+# mapfile into a Bash array and pass to docker run as "${array[@]}". Single
+# printf-string with embedded spaces would word-split incorrectly when any
+# field contained a space (manifest paths, env values, etc.).
 build_volume_args() {
     local container_name="$1"
 
-    # Using pipe instead of process substitution for BusyBox/ash compatibility
-    # Each volume arg is echoed directly; printf -v joins them without leading space
     parse_volumes "$container_name" | while IFS='|' read -r type source target readonly create; do
         [ -z "$source" ] && continue
-
+        printf '%s\n' "-v"
         if [ "$readonly" = "true" ]; then
-            printf " -v %s:%s:ro" "$source" "$target"
+            printf '%s\n' "${source}:${target}:ro"
         else
-            printf " -v %s:%s" "$source" "$target"
+            printf '%s\n' "${source}:${target}"
         fi
     done
 }
@@ -138,10 +140,9 @@ build_volume_args() {
 build_capability_args() {
     local container_name="$1"
 
-    # Using pipe instead of process substitution for BusyBox/ash compatibility
     get_container_array "$container_name" "capabilities" | while IFS= read -r cap; do
         [ -z "$cap" ] && continue
-        printf " --cap-add=%s" "$cap"
+        printf '%s\n' "--cap-add=${cap}"
     done
 }
 
@@ -149,10 +150,10 @@ build_capability_args() {
 build_port_args() {
     local container_name="$1"
 
-    # Using pipe instead of process substitution for BusyBox/ash compatibility
     get_container_array "$container_name" "ports" | while IFS= read -r port; do
         [ -z "$port" ] && continue
-        printf " -p %s" "$port"
+        printf '%s\n' "-p"
+        printf '%s\n' "${port}"
     done
 }
 
@@ -162,7 +163,8 @@ build_env_args() {
 
     get_container_array "$container_name" "env" | while IFS= read -r kv; do
         [ -z "$kv" ] && continue
-        printf ' -e %s' "$kv"
+        printf '%s\n' "-e"
+        printf '%s\n' "${kv}"
     done
 }
 
@@ -269,8 +271,11 @@ start_optional_containers() {
                 continue
             else
                 log "Starting existing container $container_name"
-                docker start "$container_name" > /dev/tty3 2>&1
-                ((started_count++))
+                if docker start "$container_name" > /dev/tty3 2>&1; then
+                    ((started_count++))
+                else
+                    log "ERROR: Failed to start existing container $container_name"
+                fi
                 continue
             fi
         fi
@@ -278,40 +283,40 @@ start_optional_containers() {
         # Create volumes if needed
         create_volumes "$container_name"
 
-        # Build advanced arguments
-        local volume_args=$(build_volume_args "$container_name")
-        local cap_args=$(build_capability_args "$container_name")
-        local port_args=$(build_port_args "$container_name")
-        local manifest_env_args=$(build_env_args "$container_name")
+        # Build advanced arguments as Bash arrays so values containing spaces
+        # (e.g. bind paths or env values) are passed as one argv token each.
+        local -a volume_args cap_args port_args manifest_env_args env_args
+        mapfile -t volume_args < <(build_volume_args "$container_name")
+        mapfile -t cap_args < <(build_capability_args "$container_name")
+        mapfile -t port_args < <(build_port_args "$container_name")
+        mapfile -t manifest_env_args < <(build_env_args "$container_name")
 
         # Load environment file if exists
         local env_file="${CONFIG_DIR}/${container_name}.env"
-        local env_args=""
+        env_args=()
         if [ -f "$env_file" ]; then
-            env_args="--env-file $env_file"
+            env_args=(--env-file "$env_file")
         fi
 
         # Check for persistent override environment file
         local persist_env_file="/persist/container-overrides/${container_name}.env"
         if [ -f "$persist_env_file" ]; then
-            env_args="--env-file $persist_env_file"
+            env_args=(--env-file "$persist_env_file")
             log "Using persistent environment override for $container_name"
         fi
 
         # Start container with full configuration
         log "Creating and starting new container $container_name"
-        docker run -d \
+        if docker run -d \
             --name "$container_name" \
             --restart="$restart_policy" \
             --network "$network_mode" \
-            $volume_args \
-            $cap_args \
-            $port_args \
-            $env_args \
-            $manifest_env_args \
-            "$docker_image" > /dev/tty3 2>&1
-
-        if [ $? -eq 0 ]; then
+            "${volume_args[@]}" \
+            "${cap_args[@]}" \
+            "${port_args[@]}" \
+            "${env_args[@]}" \
+            "${manifest_env_args[@]}" \
+            "$docker_image" > /dev/tty3 2>&1; then
             log "Successfully started $container_name"
             ((started_count++))
         else
@@ -346,9 +351,7 @@ monitor_optional_containers() {
         else
             # Container is not running, try to start it
             log "Container $container_name is not running, attempting to restart..."
-            docker start "$container_name" > /dev/tty3 2>&1
-
-            if [ $? -ne 0 ]; then
+            if ! docker start "$container_name" > /dev/tty3 2>&1; then
                 log "Failed to restart $container_name, will retry on next check"
             fi
         fi

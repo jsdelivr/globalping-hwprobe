@@ -81,7 +81,12 @@ LED_PID=$!
 echo "Step 1: Testing eMMC hardware..." > /dev/tty3
 echo "Writing zeros to entire ${EMMC_SIZE_GIB} GiB eMMC..." > /dev/tty3
 
-# Fill eMMC with zeros (use actual device size)
+# Fill eMMC with zeros (use actual device size).
+# dd is intentionally writing past the end of the device — it will exit 1
+# with "No space left on device" when it reaches the end. That is the normal
+# terminal condition of this fill, NOT a hardware fault. The downstream MD5
+# comparison against EXPECTED_MD5 is what actually exercises the hardware,
+# so we deliberately do not check PIPESTATUS here.
 dd if=/dev/zero of=${TARGET_DEVICE} bs=4M 2>&1 | tee /dev/tty3
 sync
 
@@ -229,7 +234,7 @@ CLONE_MOUNT="/tmp/_clone_check"
 
 if [ -b "$ROOTFS_A" ] && [ -b "$ROOTFS_B" ]; then
     echo "Cloning $ROOTFS_A -> $ROOTFS_B..." > /dev/tty3
-    dd if="$ROOTFS_A" of="$ROOTFS_B" bs=4M status=progress 2>&1 | tee /dev/tty3
+    dd if="$ROOTFS_A" of="$ROOTFS_B" bs=4M 2>&1 | tee /dev/tty3
     CLONE_PIPESTATUS=("${PIPESTATUS[@]}")
     sync
     if [ "${CLONE_PIPESTATUS[0]}" -ne 0 ]; then
@@ -269,9 +274,11 @@ echo "Setting eMMC to boot from user area (like SD card)..." > /dev/tty3
 # This makes eMMC behave identically to SD card for booting
 # boot_config format: boot_partition boot_ack partition_access
 # 0 0 0 = boot from user area, no ack, default access
+BOOT_CONFIG_STATUS="default (not configured)"
 if [ -f "/sys/block/mmcblk2/device/boot_config" ]; then
     if echo "0 0 0" > /sys/block/mmcblk2/device/boot_config 2>/dev/null; then
         echo "eMMC configured to boot from user area" > /dev/tty3
+        BOOT_CONFIG_STATUS="user-area boot"
     else
         echo "eMMC boot config not available (will use default settings)" > /dev/tty3
     fi
@@ -279,6 +286,7 @@ elif [ -f "/sys/block/mmcblk2/device/boot_bus_config" ]; then
     # Alternative path for some kernels (often read-only)
     if echo 0 > /sys/block/mmcblk2/device/boot_bus_config 2>/dev/null; then
         echo "eMMC boot configuration applied" > /dev/tty3
+        BOOT_CONFIG_STATUS="boot_bus_config applied"
     else
         echo "eMMC boot config not writable (will use default settings)" > /dev/tty3
     fi
@@ -298,7 +306,7 @@ echo "========================================" > /dev/tty3
 echo "eMMC hardware test: PASSED" > /dev/tty3
 echo "Firmware programming: COMPLETE" > /dev/tty3
 echo "Data verification: PASSED" > /dev/tty3
-echo "Boot configuration: SET (user area boot)" > /dev/tty3
+echo "Boot configuration: ${BOOT_CONFIG_STATUS}" > /dev/tty3
 echo "" > /dev/tty3
 echo "Both RED and GREEN LEDs solid - SUCCESS!" > /dev/tty3
 echo "You can now safely power off the device." > /dev/tty3

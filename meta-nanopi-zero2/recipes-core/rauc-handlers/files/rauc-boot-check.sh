@@ -74,7 +74,18 @@ if mountpoint -q /persist 2>/dev/null; then
         mount -o remount,ro /persist 2>/dev/null || true
     fi
 fi
-DISK="/dev/mmcblk2"
+# Detect the actual boot disk so rollback acts on the device we booted from,
+# not always /dev/mmcblk2. Production is eMMC (mmcblk2), but the same image
+# can be dd'd to an SD card (mmcblk0) for testing.
+ROOT_DEV_EARLY=$($GREP ' / ' /proc/mounts 2>/dev/null | head -n 1 | cut -d' ' -f1)
+case "$ROOT_DEV_EARLY" in
+    /dev/mmcblk0p*) DISK="/dev/mmcblk0" ;;
+    /dev/mmcblk2p*) DISK="/dev/mmcblk2" ;;
+    *)
+        DISK="/dev/mmcblk2"
+        log "Warning: could not detect boot disk from '${ROOT_DEV_EARLY}', defaulting to ${DISK}"
+        ;;
+esac
 ROOTFS_A_PARTNUM=3
 ROOTFS_B_PARTNUM=4
 
@@ -151,14 +162,25 @@ if [ "${BOOT_COUNT}" -ge "${MAX_BOOT_ATTEMPTS}" ]; then
             sync
             mount -o remount,ro /persist 2>/dev/null || true
         fi
-        # Flip legacy_boot flag to other slot
-        /usr/sbin/parted -s "${DISK}" set ${OTHER_PARTNUM} legacy_boot on
-        /usr/sbin/parted -s "${DISK}" set ${CURRENT_PARTNUM} legacy_boot off
-        sync
-        set_rollback_leds
-        log "Rebooting into slot ${OTHER_SLOT}..."
-        reboot -f
-        exit 0
+        # Flip legacy_boot flag to other slot. Treat as atomic: if the first
+        # parted fails, abort the rollback (current slot still has the flag,
+        # we keep booting). If the second fails after the first succeeded,
+        # try to undo the first so we don't leave both partitions flagged
+        # (U-Boot would still pick one, but the state is ambiguous).
+        if ! /usr/sbin/parted -s "${DISK}" set ${OTHER_PARTNUM} legacy_boot on; then
+            log "ABORT ROLLBACK: failed to set legacy_boot on slot ${OTHER_SLOT} (partition ${OTHER_PARTNUM}); keeping current slot active"
+        elif ! /usr/sbin/parted -s "${DISK}" set ${CURRENT_PARTNUM} legacy_boot off; then
+            log "ABORT ROLLBACK: failed to clear legacy_boot on slot ${RAUC_SLOT} (partition ${CURRENT_PARTNUM}); attempting to undo set on slot ${OTHER_SLOT}"
+            /usr/sbin/parted -s "${DISK}" set ${OTHER_PARTNUM} legacy_boot off || \
+                log "WARNING: undo also failed; both partitions may now have legacy_boot set"
+            sync
+        else
+            sync
+            set_rollback_leds
+            log "Rebooting into slot ${OTHER_SLOT}..."
+            reboot -f
+            exit 0
+        fi
     else
         log "DEADLOCK: Both slots in bad state - breaking deadlock"
         NEW_COUNT=0

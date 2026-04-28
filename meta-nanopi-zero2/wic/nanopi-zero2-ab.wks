@@ -31,7 +31,7 @@ part loader2   --offset 16384s --fixed-size 4096K --fstype=none --part-name load
 
 # Slot A - Active rootfs with legacy_boot flag
 # --active sets the GPT legacy_boot attribute that U-Boot looks for
-part /         --offset 32768s --fixed-size 3G --fstype=ext4 --label rootfs-a --part-name rootfs-a --active --source rootfs
+part /         --offset 32768s --fixed-size 3G --fstype=ext4 --label rootfs-a --part-name rootfs-a --active --source rootfs --no-fstab-update
 
 # Slot B - Inactive rootfs (populated by first RAUC update)
 # No --active flag, so no legacy_boot attribute

@@ -113,25 +113,23 @@ fi
 echo "Detected boot device: $BOOT_DEVICE" > /dev/tty3
 echo "Using Docker storage partition: $DOCKER_PARTITION" > /dev/tty3
 
-# Check if partition exists before mounting
+# Check if partition exists before mounting. Without persistent docker storage,
+# the probe runs from rootfs/tmpfs and loses container state on every reboot —
+# treat this as a boot failure rather than silently degrading.
 if [ ! -b "$DOCKER_PARTITION" ]; then
     echo "ERROR: Docker storage partition $DOCKER_PARTITION does not exist!" > /dev/tty3
     echo "ERROR: Docker storage partition $DOCKER_PARTITION does not exist!" > /dev/console
-    # Boot failed - set solid RED
     led_boot_failed
-    # Continue without mounting - Docker will use tmpfs
-else
-    mkdir -p /var/lib/docker
-    /bin/mount -o noatime "$DOCKER_PARTITION" /var/lib/docker
-    if [ $? -ne 0 ]; then
-        echo "ERROR: Failed to mount $DOCKER_PARTITION" > /dev/tty3
-        echo "ERROR: Failed to mount $DOCKER_PARTITION" > /dev/console
-        # Boot failed - set solid RED
-        led_boot_failed
-    else
-        echo "Successfully mounted $DOCKER_PARTITION to /var/lib/docker (noatime)" > /dev/tty3
-    fi
+    while :; do sleep 60; done
 fi
+mkdir -p /var/lib/docker
+if ! /bin/mount -o noatime "$DOCKER_PARTITION" /var/lib/docker; then
+    echo "ERROR: Failed to mount $DOCKER_PARTITION" > /dev/tty3
+    echo "ERROR: Failed to mount $DOCKER_PARTITION" > /dev/console
+    led_boot_failed
+    while :; do sleep 60; done
+fi
+echo "Successfully mounted $DOCKER_PARTITION to /var/lib/docker (noatime)" > /dev/tty3
 
 # Mount partition for persistent container data (volumes)
 # A/B layout: /persist is p5, docker_persist is p7
@@ -141,21 +139,28 @@ DOCKER_PERSIST_PARTITION="/dev/disk/by-label/docker_persist"
 if [ ! -b "$DOCKER_PERSIST_PARTITION" ]; then
     DOCKER_PERSIST_PARTITION="/dev/${BOOT_DEVICE}p7"
 fi
-if [ -b "$DOCKER_PERSIST_PARTITION" ]; then
-    mkdir -p /docker_persist
-    /bin/mount -o noatime "$DOCKER_PERSIST_PARTITION" /docker_persist
-    if [ $? -ne 0 ]; then
-        echo "ERROR: Failed to mount $DOCKER_PERSIST_PARTITION to /docker_persist" > /dev/tty3
-    else
-        echo "Successfully mounted $DOCKER_PERSIST_PARTITION to /docker_persist" > /dev/tty3
-        # Safety fallback: create subdirectories if firstBoot.sh didn't create them
-        # These are normally created by firstBoot.sh when partition is first formatted
-        [ -d /docker_persist/wireguard ] || mkdir -p /docker_persist/wireguard
-        [ -d /docker_persist/speedtest ] || mkdir -p /docker_persist/speedtest
-    fi
-else
-    echo "WARNING: Docker persist partition $DOCKER_PERSIST_PARTITION does not exist" > /dev/tty3
+# /docker_persist holds container volumes (wireguard config, speedtest cache,
+# the persistent UUID for read-only mode). Failure here means the probe runs
+# without persistent state — treat as boot failure for parity with the
+# /var/lib/docker mount above.
+if [ ! -b "$DOCKER_PERSIST_PARTITION" ]; then
+    echo "ERROR: Docker persist partition $DOCKER_PERSIST_PARTITION does not exist" > /dev/tty3
+    echo "ERROR: Docker persist partition $DOCKER_PERSIST_PARTITION does not exist" > /dev/console
+    led_boot_failed
+    while :; do sleep 60; done
 fi
+mkdir -p /docker_persist
+if ! /bin/mount -o noatime "$DOCKER_PERSIST_PARTITION" /docker_persist; then
+    echo "ERROR: Failed to mount $DOCKER_PERSIST_PARTITION to /docker_persist" > /dev/tty3
+    echo "ERROR: Failed to mount $DOCKER_PERSIST_PARTITION to /docker_persist" > /dev/console
+    led_boot_failed
+    while :; do sleep 60; done
+fi
+echo "Successfully mounted $DOCKER_PERSIST_PARTITION to /docker_persist" > /dev/tty3
+# Safety fallback: create subdirectories if firstBoot.sh didn't create them.
+# These are normally created by firstBoot.sh when the partition is first formatted.
+[ -d /docker_persist/wireguard ] || mkdir -p /docker_persist/wireguard
+[ -d /docker_persist/speedtest ] || mkdir -p /docker_persist/speedtest
 
 # Always clean Docker runtime directory
 rm -rf /var/run/docker/*
@@ -167,12 +172,16 @@ rm -rf /var/run/docker/*
 # Wait for Docker to be ready (up to 60 seconds)
 wait_for_docker 60
 
-# Check if globalping-probe image exists
+# Check if globalping-probe image exists.
+# docker run below uses "globalping/globalping-probe" (no tag) which Docker
+# resolves to ":latest". A grep on Repository:Tag would falsely succeed when
+# only a versioned tag is present, then docker run fails. Use image inspect
+# against the exact reference docker run will resolve.
 echo "Checking for globalping-probe Docker image..." > /dev/tty3
-if /usr/bin/docker images --format '{{.Repository}}:{{.Tag}}' | grep -q "globalping/globalping-probe"; then
-    echo "globalping-probe image found - skipping initialization" > /dev/tty3
+if /usr/bin/docker image inspect globalping/globalping-probe:latest >/dev/null 2>&1; then
+    echo "globalping-probe:latest image found - skipping initialization" > /dev/tty3
 else
-    echo "globalping-probe image not found - initializing Docker repository" > /dev/tty3
+    echo "globalping-probe:latest image not found - initializing Docker repository" > /dev/tty3
     init_docker_repo
 fi
 

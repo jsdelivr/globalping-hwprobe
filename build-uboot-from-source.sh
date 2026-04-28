@@ -103,7 +103,7 @@ fi
 # Check if there's a make.sh script from FriendlyElec
 if [ -f "./make.sh" ]; then
     echo "Using FriendlyElec make.sh for packaging..."
-    ./make.sh nanopi5
+    ./make.sh nanopi_zero2
 
     # Copy outputs
     if [ -f "idbloader.img" ]; then

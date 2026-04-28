@@ -73,9 +73,12 @@ do
         LAST_CHANCE=$((LAST_CHANCE+1))
     else
 
-        if [ -f /tmp/SYSTEM_STABLE ]; then
+        # Atomic consume: rename in one step rather than `[ -f ] && rm` so a
+        # concurrent systemMonitor recreate cannot be lost between the check
+        # and the delete.
+        if mv /tmp/SYSTEM_STABLE /tmp/.SYSTEM_STABLE.consumed 2>/dev/null; then
             echo "Container status is ok"  > /dev/tty2
-            rm /tmp/SYSTEM_STABLE
+            rm -f /tmp/.SYSTEM_STABLE.consumed
             COUNTER=0
             LAST_CHANCE=0
         fi

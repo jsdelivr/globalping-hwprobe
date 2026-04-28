@@ -32,16 +32,24 @@ PROJECT_DIR="$(pwd)"
 # Parse --add-container arguments (pass through to add-container.sh)
 # =============================================================================
 ADD_CONTAINER_ARGS=()
-REMAINING_ARGS=()
 FIRMWARE_VERSION=""
+
+require_value() {
+    if [ $# -lt 2 ] || [ -z "$2" ] || [ "${2#--}" != "$2" ]; then
+        echo -e "${RED}Error: $1 requires a value${NC}" >&2
+        exit 1
+    fi
+}
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --add-container|--cap|--network|--ports|--memory|--priority|--description|--volume|--env)
+            require_value "$1" "$2"
             ADD_CONTAINER_ARGS+=("$1" "$2")
             shift 2
             ;;
         --firmware-version)
+            require_value "$1" "$2"
             FIRMWARE_VERSION="$2"
             shift 2
             ;;
@@ -73,8 +81,9 @@ while [ $# -gt 0 ]; do
             exit 0
             ;;
         *)
-            REMAINING_ARGS+=("$1")
-            shift
+            echo -e "${RED}Error: Unknown option: $1${NC}" >&2
+            echo "Run '$0 --help' for usage." >&2
+            exit 1
             ;;
     esac
 done
@@ -115,7 +124,18 @@ else
     echo ""
 fi
 
-# Step 0c: Apply firmware version if requested
+# Step 0c: Apply firmware version if requested.
+# We sed the tracked startWorld.sh in place (bitbake reads it as a SRC_URI
+# file in the do_install of the jsdelivr-scripts recipe). To keep the working
+# tree clean and prevent the next build from inheriting an old --firmware-version
+# we save the original content and restore it on EXIT via a trap.
+STARTWORLD_BACKUP=""
+restore_startworld() {
+    if [ -n "$STARTWORLD_BACKUP" ] && [ -f "$STARTWORLD_BACKUP" ]; then
+        mv "$STARTWORLD_BACKUP" "$STARTWORLD"
+    fi
+}
+
 if [ -n "$FIRMWARE_VERSION" ]; then
     # Restrict to safe chars: letters, digits, dot, dash, underscore.
     # Prevents sed delimiter (|), shell metacharacters, and whitespace from breaking the substitution.
@@ -128,7 +148,10 @@ if [ -n "$FIRMWARE_VERSION" ]; then
         echo -e "${RED}Error: $STARTWORLD not found${NC}"
         exit 1
     fi
-    echo -e "${GREEN}Setting GP_HOST_FIRMWARE=${FIRMWARE_VERSION}${NC}"
+    STARTWORLD_BACKUP="${STARTWORLD}.firmware-version.bak"
+    cp "$STARTWORLD" "$STARTWORLD_BACKUP"
+    trap restore_startworld EXIT
+    echo -e "${GREEN}Setting GP_HOST_FIRMWARE=${FIRMWARE_VERSION} (will restore source on exit)${NC}"
     sed -i -E "s|^export GP_HOST_FIRMWARE=.*|export GP_HOST_FIRMWARE=${FIRMWARE_VERSION}|" "$STARTWORLD"
     if ! grep -q "^export GP_HOST_FIRMWARE=${FIRMWARE_VERSION}$" "$STARTWORLD"; then
         echo -e "${RED}Error: failed to update GP_HOST_FIRMWARE in $STARTWORLD${NC}"
@@ -163,6 +186,17 @@ fi
 # Bitbake parses ALL recipes before building, so U-Boot files must exist
 UBOOT_FILES_DIR="meta-nanopi-zero2/recipes-bsp/u-boot/files"
 DUMMY_UBOOT_CREATED=0
+
+# Combined cleanup so the EXIT trap below restores both startworld and dummy
+# U-Boot files. Trap is reset further down once cleanup is no longer needed.
+build_cleanup() {
+    if [ "${DUMMY_UBOOT_CREATED:-0}" -eq 1 ]; then
+        rm -f "$UBOOT_FILES_DIR/idbloader.img" "$UBOOT_FILES_DIR/uboot.img"
+    fi
+    restore_startworld
+}
+trap build_cleanup EXIT
+
 if [ ! -f "$UBOOT_FILES_DIR/idbloader.img" ] || [ ! -f "$UBOOT_FILES_DIR/uboot.img" ]; then
     echo -e "${YELLOW}========================================${NC}"
     echo -e "${YELLOW}Step 0: Creating dummy U-Boot files${NC}"
@@ -252,12 +286,7 @@ echo -e "${YELLOW}This includes ATF, OP-TEE, and all firmware components${NC}"
     echo "  - idblock.img: $(ls -lh ../rkbin/idblock.img | awk '{print $5}')"
     echo "  - uboot.img: $(ls -lh uboot.img | awk '{print $5}')"
 )
-
-# Check if U-Boot build succeeded (subshell exit code)
-if [ $? -ne 0 ]; then
-    echo -e "${RED}Error: U-Boot build failed${NC}"
-    exit 1
-fi
+# `set -e` aborts on subshell failure already; no manual $? check needed.
 
 # Step 4: Copy U-Boot binaries to Yocto recipe
 echo -e "${GREEN}Step 4: Installing U-Boot binaries to Yocto recipe...${NC}"
@@ -277,6 +306,10 @@ cp sources/rkbin/idblock.img \
    meta-nanopi-zero2/recipes-bsp/u-boot/files/idbloader.img
 cp sources/uboot-rockchip/uboot.img \
    meta-nanopi-zero2/recipes-bsp/u-boot/files/uboot.img
+
+# Real binaries now in place — disarm the dummy-cleanup so the EXIT trap
+# does not delete the just-installed real U-Boot files.
+DUMMY_UBOOT_CREATED=0
 
 echo -e "${GREEN}✓ Source-built U-Boot binaries installed${NC}"
 
@@ -337,7 +370,7 @@ echo "  sudo dd if=build/tmp/deploy/images/nanopi-zero2/emmc-programmer-image-ba
 echo "  (Flash to SD card, boot device, programs baseonly image to eMMC)"
 echo ""
 echo -e "${GREEN}RAUC Update Bundle (for OTA updates):${NC}"
-RAUC_BUNDLE=$(ls -1 tmp/deploy/images/nanopi-zero2/rauc-update-bundle-nanopi-zero2*.raucb 2>/dev/null | grep -v '^l' | head -1)
+RAUC_BUNDLE=$(find tmp/deploy/images/nanopi-zero2 -maxdepth 1 -name 'rauc-update-bundle-nanopi-zero2*.raucb' -not -type l -print -quit 2>/dev/null)
 if [ -n "$RAUC_BUNDLE" ]; then
     echo "  Bundle: $RAUC_BUNDLE ($(ls -lh $RAUC_BUNDLE | awk '{print $5}'))"
     echo "  Install via: scp $RAUC_BUNDLE debug@<device-ip>:/docker_persist/"
