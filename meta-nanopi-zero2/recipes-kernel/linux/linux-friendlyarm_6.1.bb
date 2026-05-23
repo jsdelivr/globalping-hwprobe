@@ -8,16 +8,14 @@ LIC_FILES_CHKSUM = "file://COPYING;md5=6bc538ed5bd9a7fc9398086aedcd7e46"
 inherit kernel
 require recipes-kernel/linux/linux-yocto.inc
 
-LINUX_VERSION ?= "6.1.118"
+LINUX_VERSION ?= "6.1.141"
 LINUX_VERSION_EXTENSION = "-friendlyarm"
 
 # Skip version sanity check since we're using pinned commit
 KERNEL_VERSION_SANITY_SKIP = "1"
 
-# Kernel version pinned on 2025-10-11 (tested and working)
-# Commit: arm64: dts: rockchip: rk3588: Add clk PCLK_PHP_ROOT to pcie30phy
-# Date: Thu Aug 7 14:29:04 2025
-SRCREV = "4944602540b62f5aad139fe602a76cf7c3176128"
+# Pinned to nanopi6-v6.1.y tip 2026-03-31 (FriendlyElec's latest as of bump)
+SRCREV = "c8ae7970abdc7d82af51f442ea29b307322a0199"
 SRC_URI = "git://github.com/friendlyarm/kernel-rockchip.git;protocol=https;branch=nanopi6-v6.1.y"
 
 SRC_URI:append = " \
@@ -96,6 +94,13 @@ do_configure:append() {
 
     # Disable USB Gadget
     sed -i 's/^CONFIG_USB_GADGET=.*/# CONFIG_USB_GADGET is not set/' ${B}/.config || true
+
+    # CVE-2026-43284/43500/46300 (Dirty Frag, Fragnesia) + CVE-2026-31431 (Copy Fail):
+    # remove vulnerable modules — probe does not use IPsec, RxRPC, or AF_ALG AEAD.
+    sed -i 's/^CONFIG_INET_ESP=.*/# CONFIG_INET_ESP is not set/' ${B}/.config || true
+    sed -i 's/^CONFIG_INET6_ESP=.*/# CONFIG_INET6_ESP is not set/' ${B}/.config || true
+    sed -i 's/^CONFIG_AF_RXRPC=.*/# CONFIG_AF_RXRPC is not set/' ${B}/.config || true
+    sed -i 's/^CONFIG_CRYPTO_USER_API_AEAD=.*/# CONFIG_CRYPTO_USER_API_AEAD is not set/' ${B}/.config || true
 
     # Rerun oldconfig to resolve dependencies
     oe_runmake -C ${S} O=${B} oldconfig
