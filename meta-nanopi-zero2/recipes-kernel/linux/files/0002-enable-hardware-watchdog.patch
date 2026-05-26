@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Yocto Builder <builder@yoctoproject.org>
+Date: Fri, 18 Oct 2025 06:00:00 +0000
+Subject: [PATCH] Enable hardware watchdog for NanoPi Zero2
+
+Enable the Synopsys DesignWare watchdog timer (wdt@ffac0000)
+for the NanoPi Zero2 board.
+
+Signed-off-by: Yocto Builder <builder@yoctoproject.org>
+---
+ arch/arm64/boot/dts/rockchip/rk3528-nanopi-rev01.dts | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/rockchip/rk3528-nanopi-rev01.dts b/arch/arm64/boot/dts/rockchip/rk3528-nanopi-rev01.dts
+index 000000000000..111111111111 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3528-nanopi-rev01.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3528-nanopi-rev01.dts
+@@ -618,3 +618,7 @@
+ 		};
+ 	};
+ };
++
++&wdt {
++	status = "okay";
++};
+--
+2.34.1

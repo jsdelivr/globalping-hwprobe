@@ -1,0 +1,18 @@
+[Unit]
+Description=RAUC Boot Slot Check
+Documentation=https://rauc.io/
+DefaultDependencies=no
+After=local-fs.target
+Before=sysinit.target rauc.service
+RequiresMountsFor=/persist
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/rauc/rauc-boot-check.sh
+RemainAfterExit=yes
+TimeoutStartSec=120
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=sysinit.target

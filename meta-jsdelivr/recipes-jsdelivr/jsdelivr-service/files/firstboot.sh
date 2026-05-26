@@ -1,5 +1,5 @@
 HOST_PREFIX=${HOST_PREFIX:-"globalping-probe"}
-NET_DEVICE=${NET_DEVICE:="eth0"}
+NET_DEVICE=${NET_DEVICE:="end1"}
 LAST_MAC4=$(sed -rn "s/^.*([0-9A-F:]{5})$/\1/gi;s/://p" /sys/class/net/${NET_DEVICE}/address)
 NEW_HOSTNAME=${HOST_PREFIX}-${LAST_MAC4:-0000}
 

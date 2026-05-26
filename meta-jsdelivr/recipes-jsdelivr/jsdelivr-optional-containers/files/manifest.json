@@ -1,0 +1,115 @@
+{
+  "version": "1.0",
+  "containers": [
+    {
+      "name": "crowdsec",
+      "frozen_image": "crowdsec.frozen",
+      "docker_image": "crowdsecurity/crowdsec:slim",
+      "description": "Custom container: crowdsecurity/crowdsec:slim",
+      "default_enabled": false,
+      "startup_priority": 1,
+      "required_memory_mb": 150,
+      "network_mode": "host",
+      "restart_policy": "unless-stopped",
+      "ports": [],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/docker_persist/crowdsec/data",
+          "target": "/var/lib/crowdsec/data",
+          "readonly": false,
+          "create": true
+        },
+        {
+          "type": "bind",
+          "source": "/docker_persist/crowdsec/config",
+          "target": "/etc/crowdsec",
+          "readonly": false,
+          "create": true
+        }
+      ],
+      "capabilities": [
+        "NET_ADMIN",
+        "NET_RAW"
+      ],
+      "env": []
+    },
+    {
+      "name": "netdata",
+      "frozen_image": "netdata.frozen",
+      "docker_image": "netdata/netdata:latest",
+      "description": "Custom container: netdata/netdata:latest",
+      "default_enabled": false,
+      "startup_priority": 10,
+      "required_memory_mb": 100,
+      "network_mode": "host",
+      "restart_policy": "unless-stopped",
+      "ports": [],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/docker_persist/netdata/lib",
+          "target": "/var/lib/netdata",
+          "readonly": false,
+          "create": true
+        },
+        {
+          "type": "bind",
+          "source": "/docker_persist/netdata/cache",
+          "target": "/var/cache/netdata",
+          "readonly": false,
+          "create": true
+        },
+        {
+          "type": "bind",
+          "source": "/docker_persist/netdata/config",
+          "target": "/etc/netdata",
+          "readonly": false,
+          "create": true
+        }
+      ],
+      "capabilities": [
+        "SYS_PTRACE"
+      ],
+      "env": []
+    },
+    {
+      "name": "wireguard",
+      "frozen_image": "wireguard.frozen",
+      "docker_image": "linuxserver/wireguard:latest",
+      "description": "Custom container: linuxserver/wireguard:latest",
+      "default_enabled": false,
+      "startup_priority": 5,
+      "required_memory_mb": 20,
+      "network_mode": "host",
+      "restart_policy": "unless-stopped",
+      "ports": [],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/docker_persist/wireguard",
+          "target": "/config",
+          "readonly": false,
+          "create": true
+        },
+        {
+          "type": "bind",
+          "source": "/lib/modules",
+          "target": "/lib/modules",
+          "readonly": true,
+          "create": true
+        }
+      ],
+      "capabilities": [
+        "NET_ADMIN",
+        "SYS_MODULE"
+      ],
+      "env": [
+        "PUID=0",
+        "PGID=0",
+        "TZ=Etc/UTC"
+      ]
+    }
+  ],
+  "notes": "This manifest describes available optional containers. Containers are added dynamically via ./add-container.sh and loaded at boot by jsdelivr-container-loader.sh. Enable containers in /persist/jsdelivr-config/enabled-containers.conf for persistent configuration."
+}

@@ -1,6 +1,26 @@
 #!/bin/bash
 
+# Source shared utilities (includes LED functions)
+source /usr/bin/jsdelivr-utils.sh
+
 echo "JSDELIV AUTO Update start" > /dev/tty5
+
+# Set LED to fast green blinking to indicate update in progress
+led_container_starting
+
+# Pause monitoring + reboot scripts and replace systemWatchdog with a dumb
+# watchdog kicker for the duration of the docker pull. If THIS script dies
+# abruptly (SIGKILL, OOM, panic) before reaching the resume path at the
+# bottom, those processes would stay frozen forever and keepWatchdogHappy
+# would feed /dev/watchdog0 indefinitely while the probe was dead.
+# Register a trap so any exit path restores normal state.
+auto_update_cleanup() {
+    killall jsdelivr-keepWatchdogHappy.sh 2>/dev/null
+    killall -CONT jsdelivr-mandatoryReboot.sh 2>/dev/null
+    killall -CONT jsdelivr-systemMonitor.sh 2>/dev/null
+    # systemWatchdog respawns via its systemd unit (Restart=on-failure)
+}
+trap auto_update_cleanup EXIT INT TERM HUP
 
 echo "STOPING the MANDATORY reboot script" > /dev/tty5
 killall -STOP jsdelivr-mandatoryReboot.sh
@@ -11,103 +31,37 @@ killall  -9 jsdelivr-systemWatchdog.sh
 sleep 1
 /usr/bin/jsdelivr-keepWatchdogHappy.sh &
 
-docker stop $(docker ps -a -q)
-/bin/systemctl stop containerd
-/bin/systemctl stop docker
-umount /var/lib/docker/overlay2/*/*
-umount /var/lib/docker
-echo 1 > /sys/block/zram0/reset
-
-
-mkdir /tmp/AutoUpdate
-mount -o ro /dev/mmcblk0p4 /tmp/AutoUpdate
-
-if mount | grep "/tmp/AutoUpdate" > /dev/null; then
-    echo "Partition mounted" > /dev/tty5
-else
-    echo "Unable to mount autoupdate partition, Aborting update" > /dev/tty5
-    echo "Resuming the MANDATORY reboot script" > /dev/tty5
-    killall -CONT jsdelivr-mandatoryReboot.sh
-    killall jsdelivr-keepWatchdogHappy.sh
-    exit 1
-fi
-
-SERVER_VER=`curl --silent https://data.jsdelivr.com/v1/packages/gh/jsdelivr/globalping-probe/resolved   | awk -F ':'  '/"version"/ {print  substr($NF, 1, length($NF)-1)}'`
-CURRENT_VER=`cat /tmp/AutoUpdate/CURRENT_VERSION`
-
-echo "VERSIONS:" > /dev/tty5
-echo "SERVER_VERSION: $SERVER_VER" > /dev/tty5
-echo "CURRENT_VERSION: $CURRENT_VER" > /dev/tty5
-
-
-if [ "$SERVER_VER" = "$CURRENT_VER" ]; then
-    echo "The version are the same... aborting upgrade and waiting for the next upgrade cycle" > /dev/tty5
-    echo "Resuming the MANDATORY reboot script" > /dev/tty5
-    killall -CONT jsdelivr-mandatoryReboot.sh
-    killall -CONT jsdelivr-systemMonitor.sh
-    killall jsdelivr-keepWatchdogHappy.sh
-    exit 2
-fi
-
-
-if [ -f /tmp/CAN_UPGRADE ]; then
-    echo "Can Upgrade flag is present" > /dev/tty5
-    if [ -f /JSDELIVR_BASE_CONTAINER/VERSION ]; then
-        echo "The bundled container can be upgraded " > /dev/tty5
-        mkdir /tmp/rfs
-        mount  /dev/mmcblk0p2 /tmp/rfs
-        mount -o remount,rw /tmp/rfs
-        rm /tmp/rfs/JSDELIVR_BASE_CONTAINER/globalping-probe.frozen
-        date >> /tmp/rfs/JSDELIVR_BASE_CONTAINER/AUTO_UPDATE
-        cp /JSDELIVR_BASE_CONTAINER/VERSION /tmp/rfs/JSDELIVR_BASE_CONTAINER
-        cp /JSDELIVR_BASE_CONTAINER/globalping-probe.frozen /tmp/rfs/JSDELIVR_BASE_CONTAINER/globalping-probe.frozen
-        umount /tmp/rfs
-        mount -o remount,rw /JSDELIVR_BASE_CONTAINER
-        rm /JSDELIVR_BASE_CONTAINER/VERSION
-        echo "The bundled container was upgraded" > /dev/tty5
-    else
-        echo "The bundled container cant be upgraded" > /dev/tty5
-    fi
-else
-    echo "Can Upgrade flag is NOT present" > /dev/tty5
-fi
-
-
-umount /JSDELIVR_BASE_CONTAINER
-mount -o remount,rw /tmp/AutoUpdate
-mkdir /tmp/AutoUpdate/download
+CONTAINERS=$(docker ps -aq 2>/dev/null)
+[ -n "$CONTAINERS" ] && docker stop $CONTAINERS
 
 echo "Initiate image download" > /dev/tty5
 
-skopeo --override-arch arm copy docker://globalping/globalping-probe:latest docker-archive:/tmp/AutoUpdate/globalping-probe.frozen:globalping-probe
+if ! docker pull globalping/globalping-probe:latest; then
+    echo "Image download FAILED" > /dev/tty5
+    # We stopped containers before the pull. If the pull fails the device
+    # would otherwise sit dark until the watchdog reboots it. Restart any
+    # containers that were running so the probe stays online with the
+    # existing local image; startWorld's main loop will keep them alive.
+    if [ -n "$CONTAINERS" ]; then
+        echo "Restarting previously-running containers with existing image..." > /dev/tty5
+        for cid in $CONTAINERS; do
+            docker start "$cid" >/dev/null 2>&1 || \
+                echo "WARNING: could not restart $cid" > /dev/tty5
+        done
+    fi
+    # trap will run cleanup on exit
+    exit 1
+fi
 
 echo "Image download FINISHED" > /dev/tty5
 
-
-echo "Start main image repo update" > /dev/tty5
-
-umount /dev/mmcblk0p3
-dd if=/dev/zero of=/dev/mmcblk0p3 bs=1M count=2
-mkfs.ext4 /dev/mmcblk0p3
-mount /dev/mmcblk0p3 /JSDELIVR_BASE_CONTAINER
-cp /tmp/AutoUpdate/globalping-probe.frozen /JSDELIVR_BASE_CONTAINER/globalping-probe.frozen.new
-echo "$SERVER_VER" > /tmp/AutoUpdate/CURRENT_VERSION
-cp /tmp/AutoUpdate/CURRENT_VERSION /JSDELIVR_BASE_CONTAINER/VERSION
-sync
-mv /JSDELIVR_BASE_CONTAINER/globalping-probe.frozen.new /JSDELIVR_BASE_CONTAINER/globalping-probe.frozen
-mount -o remount,ro /JSDELIVR_BASE_CONTAINER
-
-rm /tmp/AutoUpdate/globalping-probe.frozen
 sync
 
 echo "Main image repo update finished" > /dev/tty5
 
-
-
-umount /tmp/AutoUpdate
-
 echo "JSDELIV AUTO Update FINISHED" > /dev/tty5
 echo "Resuming the MANDATORY reboot script" > /dev/tty5
-killall -CONT jsdelivr-mandatoryReboot.sh
-killall -CONT jsdelivr-systemMonitor.sh
-killall jsdelivr-keepWatchdogHappy.sh
+# Cleanup is handled by the EXIT trap; no need to duplicate here.
+
+# Restore LED to stable state (systemMonitor will take over after resume)
+led_container_stable

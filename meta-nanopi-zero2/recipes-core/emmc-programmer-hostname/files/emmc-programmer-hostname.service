@@ -1,0 +1,16 @@
+[Unit]
+Description=Set eMMC Programmer Hostname
+DefaultDependencies=no
+Before=network-pre.target
+Wants=network-pre.target
+After=systemd-remount-fs.service
+Before=systemd-hostnamed.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/set-emmc-hostname.sh
+RemainAfterExit=yes
+StandardOutput=journal
+
+[Install]
+WantedBy=sysinit.target

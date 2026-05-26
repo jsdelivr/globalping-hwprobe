@@ -1,0 +1,139 @@
+#
+# NanoPi Zero2 Yocto Build Configuration
+# Copy this file to build/conf/local.conf
+#
+
+# =============================================================================
+# Machine Selection
+# =============================================================================
+MACHINE ??= "nanopi-zero2"
+
+# =============================================================================
+# Distribution Configuration
+# =============================================================================
+DISTRO ?= "poky"
+CONF_VERSION = "2"
+
+# =============================================================================
+# Build Performance
+# =============================================================================
+# Adjust these based on your build machine capabilities
+BB_NUMBER_THREADS = "7"
+PARALLEL_MAKE = "-j 7"
+
+# Remove work directories after build to save disk space
+INHERIT += "rm_work"
+
+# Disk space monitoring
+BB_DISKMON_DIRS ??= "\
+    STOPTASKS,${TMPDIR},1G,100K \
+    STOPTASKS,${DL_DIR},1G,100K \
+    STOPTASKS,${SSTATE_DIR},1G,100K \
+    STOPTASKS,/tmp,100M,100K \
+    HALT,${TMPDIR},100M,1K \
+    HALT,${DL_DIR},100M,1K \
+    HALT,${SSTATE_DIR},100M,1K \
+    HALT,/tmp,10M,1K"
+
+# =============================================================================
+# Init System - systemd
+# =============================================================================
+DISTRO_FEATURES:append = " systemd usrmerge virtualization rauc"
+DISTRO_FEATURES:remove = " sysvinit"
+
+VIRTUAL-RUNTIME_init_manager = "systemd"
+VIRTUAL-RUNTIME_udev = "systemd"
+
+# Avoid sysv backfill noise
+DISTRO_FEATURES_BACKFILL_CONSIDERED:append = " sysvinit"
+VIRTUAL-RUNTIME_initscripts = ""
+
+# =============================================================================
+# Image Features
+# =============================================================================
+# debug-tweaks: SSH root access with blank password
+# read-only-rootfs: Immutable root filesystem for reliability
+EXTRA_IMAGE_FEATURES ?= "debug-tweaks"
+EXTRA_IMAGE_FEATURES += "read-only-rootfs"
+
+# Volatile logs - stored in tmpfs, lost on reboot
+VOLATILE_LOG_DIR = "yes"
+
+# Support for read-only rootfs volatile binds
+IMAGE_INSTALL:append = " volatile-binds"
+
+# Build statistics
+USER_CLASSES ?= "buildstats"
+
+# Disable interactive patch resolution
+PATCHRESOLVE = "noop"
+
+# QEMU configuration
+PACKAGECONFIG:append:pn-qemu-system-native = " sdl"
+
+# =============================================================================
+# Container Runtime (Docker)
+# =============================================================================
+IMAGE_INSTALL:append = " docker tini iptables ca-certificates"
+IMAGE_INSTALL:append = " skopeo"
+
+# =============================================================================
+# Globalping Hardware Probe
+# =============================================================================
+# Base container (mandatory)
+IMAGE_INSTALL:append = " jsdelivr-service jsdelivr-scripts jsdelivr-configure jsdelivr-basecontainer"
+
+# Optional containers management system
+IMAGE_INSTALL:append = " jsdelivr-container-manager jsdelivr-optional-containers"
+
+# Optional container frozen images (crowdsec, netdata, wireguard)
+IMAGE_INSTALL:append = " jsdelivr-container-crowdsec jsdelivr-container-netdata jsdelivr-container-wireguard"
+
+# =============================================================================
+# System Utilities
+# =============================================================================
+# Filesystem and network
+IMAGE_INSTALL:append = " e2fsprogs curl parted"
+
+# SSH client and server
+IMAGE_INSTALL:append = " openssh-ssh openssh-sshd openssh-sftp-server openssh-scp"
+
+# CPU frequency scaling
+IMAGE_INSTALL:append = " cpufrequtils"
+
+# Hardware tools for eMMC/SD management
+IMAGE_INSTALL:append = " mmc-utils fio"
+
+# Diagnostic tools
+IMAGE_INSTALL:append = " strace htop mc lsof nano jq"
+
+# Python runtime
+IMAGE_INSTALL:append = " python3-core python3-flask"
+
+# =============================================================================
+# RAUC OTA Updates
+# =============================================================================
+# RAUC framework for A/B partition updates
+IMAGE_INSTALL:append = " rauc rauc-handlers"
+
+# =============================================================================
+# Image Size Configuration for RAUC A/B Updates
+# =============================================================================
+# Limit ext4 image size to fit in 3GB A/B partitions
+IMAGE_ROOTFS_MAXSIZE = "2900000"
+IMAGE_ROOTFS_EXTRA_SPACE = "102400"
+IMAGE_OVERHEAD_FACTOR = "1.1"
+# Align ext4 image to 4KB blocks (required for RAUC verity bundles)
+IMAGE_ROOTFS_ALIGNMENT = "4"
+# ext4 filesystem options for reliability and RAUC compatibility
+EXTRA_IMAGECMD:ext4 = "-O metadata_csum,64bit -E lazy_itable_init=1"
+
+# =============================================================================
+# Debug User Configuration
+# =============================================================================
+# Create a 'debug' user with password 'password' for SSH access
+INHERIT += "extrausers"
+EXTRA_USERS_PARAMS = "\
+    useradd -p '$(openssl passwd -6 password)' debug; \
+    usermod -a -G sudo debug; \
+"
