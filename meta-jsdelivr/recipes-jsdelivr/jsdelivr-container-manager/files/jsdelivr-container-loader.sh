@@ -18,15 +18,28 @@ log() {
     echo "[Container Loader] $1"
 }
 
+# Safely load ENABLE_<NAME>=0|1 lines from a config file. /persist is
+# writable so a plain `source` would execute arbitrary shell at boot as
+# root. grep filters to the exact allowed shape; everything else is
+# silently dropped, then we source the sanitised output.
+load_optional_config() {
+    local src="$1" tmp
+    [ -f "$src" ] || return 0
+    tmp=$(mktemp) || return 1
+    grep -E '^ENABLE_[A-Z0-9_]+=[01]$' "$src" > "$tmp" || true
+    # shellcheck source=/dev/null
+    source "$tmp"
+    rm -f "$tmp"
+}
+
 # Load configuration from persistent storage if available, otherwise use default
 load_config() {
-    # Check if persistent config exists
     if [ -f "$PERSIST_CONFIG_FILE" ]; then
         log "Loading configuration from persistent storage"
-        source "$PERSIST_CONFIG_FILE"
+        load_optional_config "$PERSIST_CONFIG_FILE"
     elif [ -f "$CONFIG_FILE" ]; then
         log "Loading default configuration"
-        source "$CONFIG_FILE"
+        load_optional_config "$CONFIG_FILE"
     else
         log "No configuration file found, all optional containers disabled by default"
     fi
