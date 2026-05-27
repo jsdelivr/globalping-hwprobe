@@ -339,7 +339,9 @@ def save_settings(new_settings):
     stops on the first failure. Earlier entries in the batch may already be
     committed when a later entry fails — callers should treat a 5xx response
     as "state unknown" and re-read /settings to reconcile.
-    Returns (success: bool, error_message: str or None).
+    Returns (success: bool, error_message: str or None, status_code: int).
+    status_code is 400 for client-side validation failures, 500 for
+    persistence/system failures, and 200 on success.
     """
     # Validate that only known settings are being updated
     valid_keys = set(SETTINGS_FILES.keys())
@@ -347,7 +349,7 @@ def save_settings(new_settings):
 
     if not provided_keys.issubset(valid_keys):
         invalid_keys = provided_keys - valid_keys
-        return False, f"Invalid setting keys: {invalid_keys}. Valid keys are: {valid_keys}"
+        return False, f"Invalid setting keys: {invalid_keys}. Valid keys are: {valid_keys}", 400
 
     # PHASE 1: validate every entry before touching disk. A type error in
     # one field used to commit earlier fields and surface a 4xx — the device
@@ -359,13 +361,13 @@ def save_settings(new_settings):
         elif setting_name in SECRET_SETTINGS and not isinstance(value, str):
             type_errors.append(f"{setting_name} must be a string")
     if type_errors:
-        return False, "; ".join(type_errors)
+        return False, "; ".join(type_errors), 400
 
     # Remount /persist as read-write. If the remount itself failed, attempt
     # a best-effort remount-RO so we never leave /persist accidentally writable.
     if not remount_persist_rw():
         remount_persist_ro()
-        return False, "Failed to remount /persist as read-write"
+        return False, "Failed to remount /persist as read-write", 500
 
     try:
         # PHASE 2: write all entries. write_bash_setting_file is itself
@@ -389,7 +391,7 @@ def save_settings(new_settings):
         # Always remount as read-only, even if write failed
         remount_persist_ro()
 
-    return success, error_msg
+    return success, error_msg, (200 if success else 500)
 
 
 @app.before_request
@@ -735,7 +737,7 @@ def update_setting(setting_name, value):
             typed_value = value
 
         # Save the single setting
-        success, error_msg = save_settings({setting_name: typed_value})
+        success, error_msg, status_code = save_settings({setting_name: typed_value})
 
         if success:
             # Read back the saved value to confirm. Redact secret fields:
@@ -754,9 +756,9 @@ def update_setting(setting_name, value):
             }), 200
         else:
             return jsonify({
-                'error': 'Failed to save setting',
+                'error': 'Bad request' if status_code == 400 else 'Failed to save setting',
                 'details': error_msg
-            }), 500
+            }), status_code
 
     except Exception as e:
         return jsonify({
@@ -804,7 +806,7 @@ def update_settings():
             }), 400
 
         # Save the settings
-        success, error_msg = save_settings(new_settings)
+        success, error_msg, status_code = save_settings(new_settings)
 
         if success:
             # Read back the saved settings to confirm. Redact secret fields
@@ -819,9 +821,9 @@ def update_settings():
             }), 200
         else:
             return jsonify({
-                'error': 'Failed to save settings',
+                'error': 'Bad request' if status_code == 400 else 'Failed to save settings',
                 'details': error_msg
-            }), 500
+            }), status_code
 
     except json.JSONDecodeError as e:
         return jsonify({
