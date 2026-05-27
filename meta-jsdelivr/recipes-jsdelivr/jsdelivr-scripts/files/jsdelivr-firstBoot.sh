@@ -217,12 +217,14 @@ else
     # Fix GPT table to use all available space
     parted "/dev/${BOOT_DEVICE}" --script --fix print 2>/dev/null || true
 
-    # Get disk size in MB
-    DISK_SIZE_MB=$(parted "/dev/${BOOT_DEVICE}" --script -- unit MB print | grep "^Disk /dev/${BOOT_DEVICE}" | awk '{print $3}' | sed 's/MB//')
+    # Get disk size in MB. parted unit MB can emit decimals (e.g. "15258.00MB")
+    # depending on geometry/version; awk int() truncates to a shell-integer so
+    # the $(( ... )) arithmetic below doesn't bail with a syntax error.
+    DISK_SIZE_MB=$(parted "/dev/${BOOT_DEVICE}" --script -- unit MB print | grep "^Disk /dev/${BOOT_DEVICE}" | awk '{print int($3)}')
 
     # Find the last partition number and its end position
     LAST_PART_NUM=$(parted "/dev/${BOOT_DEVICE}" --script -- unit MB print | grep "^ " | awk '{print $1}' | sort -n | tail -1)
-    LAST_PART_END=$(parted "/dev/${BOOT_DEVICE}" --script -- unit MB print | grep "^ ${LAST_PART_NUM}" | awk '{print $3}' | sed 's/MB//')
+    LAST_PART_END=$(parted "/dev/${BOOT_DEVICE}" --script -- unit MB print | grep "^ ${LAST_PART_NUM}" | awk '{print int($3)}')
 
     log "Last partition is ${LAST_PART_NUM}, ends at ${LAST_PART_END}MB, disk size ${DISK_SIZE_MB}MB"
 
