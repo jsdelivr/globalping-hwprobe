@@ -184,7 +184,7 @@ Bundled containers are enabled by default (`ENABLE_<NAME>=1` is written into `en
 #### eMMC Programmer (recommended)
 Flash the programmer image to an SD card:
 ```
-gunzip -c emmc-programmer-image-nanopi-zero2.wic.gz | sudo dd of=/dev/sdX bs=4M status=progress && sync
+sudo dd if=emmc-programmer-image-nanopi-zero2.rootfs.wic of=/dev/sdX bs=4M status=progress && sync
 ```
 Insert the SD card, power up, and wait for both LEDs to go solid. Remove SD card, reboot from eMMC.
 
