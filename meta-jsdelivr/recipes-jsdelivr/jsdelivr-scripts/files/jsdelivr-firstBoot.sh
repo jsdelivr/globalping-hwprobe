@@ -349,6 +349,12 @@ EXTEOF
     if [ -d "${PERSIST_MOUNT}/${IDENTITY_DIR}/ssh" ]; then
         mkdir -p "$INACTIVE_MOUNT/etc/ssh/keys"
         cp "${PERSIST_MOUNT}/${IDENTITY_DIR}/ssh/"* "$INACTIVE_MOUNT/etc/ssh/keys/" 2>/dev/null || true
+        # Mirror the active-slot's sshd config rewrite so that on rollback the
+        # sshd in the inactive slot reads the persisted host keys from
+        # /etc/ssh/keys/ instead of the empty tmpfs /var/run/ssh/.
+        if [ -f "$INACTIVE_MOUNT/etc/ssh/sshd_config_readonly" ]; then
+            sed -i 's|/var/run/ssh/|/etc/ssh/keys/|g' "$INACTIVE_MOUNT/etc/ssh/sshd_config_readonly" 2>/dev/null || true
+        fi
     fi
     sync
     umount "$INACTIVE_MOUNT"
