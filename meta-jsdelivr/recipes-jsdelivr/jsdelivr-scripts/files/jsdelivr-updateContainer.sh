@@ -66,7 +66,7 @@ if [ -f "$USB_MOUNT/JSDELIVR.UPD" ]; then
    PULL_OK=0
    for ATTEMPT in 1 2 3; do
        echo "Pull attempt $ATTEMPT/3 for :latest" > /dev/tty4
-       if docker pull globalping/globalping-probe:latest; then
+       if timeout 600 docker pull globalping/globalping-probe:latest; then
            PULL_OK=1
            break
        fi
@@ -100,7 +100,7 @@ if [ -f "$USB_MOUNT/JSDELIVR-DEV.UPD" ]; then
    PULL_OK=0
    for ATTEMPT in 1 2 3; do
        echo "Pull attempt $ATTEMPT/3 for :dev" > /dev/tty4
-       if docker pull globalping/globalping-probe:dev; then
+       if timeout 600 docker pull globalping/globalping-probe:dev; then
            PULL_OK=1
            break
        fi

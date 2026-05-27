@@ -36,7 +36,7 @@ CONTAINERS=$(docker ps -aq 2>/dev/null)
 
 echo "Initiate image download" > /dev/tty5
 
-if ! docker pull globalping/globalping-probe:latest; then
+if ! timeout 600 docker pull globalping/globalping-probe:latest; then
     echo "Image download FAILED" > /dev/tty5
     # We stopped containers before the pull. If the pull fails the device
     # would otherwise sit dark until the watchdog reboots it. Restart any
