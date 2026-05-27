@@ -36,6 +36,26 @@ SETTINGS_FILES = {
 # Settings whose values must never be returned to API clients or written to logs.
 SECRET_SETTINGS = ('webApiPassword',)
 
+# Timeouts (seconds) for subprocess calls. Without these a wedged dockerd or
+# stuck block device would pin the Flask worker, eventually starving all
+# workers and killing the control API.
+DOCKER_PS_TIMEOUT = 10        # list / filter — should be fast
+DOCKER_LOGS_TIMEOUT = 30      # bounded by --tail / --since but still external
+DOCKER_CTL_TIMEOUT = 30       # docker stop has its own 10s grace + cleanup
+MOUNT_TIMEOUT = 10            # local syscall but block device can stall
+
+
+def run_subprocess(args, timeout):
+    """subprocess.run wrapped with timeout + check=True. Raises
+    subprocess.TimeoutExpired on hang; callers must catch and surface 504."""
+    return subprocess.run(
+        args,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=timeout,
+    )
+
 
 def redact_settings(settings):
     """Return a copy of settings with secret values masked, for safe logging
@@ -54,16 +74,14 @@ def remount_persist_rw():
     Returns True if successful, False otherwise.
     """
     try:
-        subprocess.run(
-            ['mount', '-o', 'remount,rw', PERSIST_MOUNT],
-            capture_output=True,
-            text=True,
-            check=True
-        )
+        run_subprocess(['mount', '-o', 'remount,rw', PERSIST_MOUNT], timeout=MOUNT_TIMEOUT)
         print(f"Remounted {PERSIST_MOUNT} as read-write")
         return True
     except subprocess.CalledProcessError as e:
         print(f"Warning: Failed to remount {PERSIST_MOUNT} as RW: {e.stderr}")
+        return False
+    except subprocess.TimeoutExpired:
+        print(f"Warning: Timed out remounting {PERSIST_MOUNT} as RW")
         return False
     except Exception as e:
         print(f"Warning: Error remounting {PERSIST_MOUNT}: {e}")
@@ -76,16 +94,14 @@ def remount_persist_ro():
     Returns True if successful, False otherwise.
     """
     try:
-        subprocess.run(
-            ['mount', '-o', 'remount,ro', PERSIST_MOUNT],
-            capture_output=True,
-            text=True,
-            check=True
-        )
+        run_subprocess(['mount', '-o', 'remount,ro', PERSIST_MOUNT], timeout=MOUNT_TIMEOUT)
         print(f"Remounted {PERSIST_MOUNT} as read-only")
         return True
     except subprocess.CalledProcessError as e:
         print(f"Warning: Failed to remount {PERSIST_MOUNT} as RO: {e.stderr}")
+        return False
+    except subprocess.TimeoutExpired:
+        print(f"Warning: Timed out remounting {PERSIST_MOUNT} as RO")
         return False
     except Exception as e:
         print(f"Warning: Error remounting {PERSIST_MOUNT}: {e}")
@@ -406,12 +422,9 @@ def get_containers():
     Returns the raw output of docker ps --all --no-trunc --format json
     """
     try:
-        # Execute docker ps command
-        result = subprocess.run(
+        result = run_subprocess(
             ['docker', 'ps', '--all', '--no-trunc', '--format', 'json'],
-            capture_output=True,
-            text=True,
-            check=True
+            timeout=DOCKER_PS_TIMEOUT,
         )
 
         # Parse each line as a separate JSON object
@@ -422,6 +435,11 @@ def get_containers():
 
         return jsonify(containers), 200
 
+    except subprocess.TimeoutExpired:
+        return jsonify({
+            'error': 'docker ps timed out',
+            'details': f'No response within {DOCKER_PS_TIMEOUT}s'
+        }), 504
     except subprocess.CalledProcessError as e:
         return jsonify({
             'error': 'Failed to execute docker ps command',
@@ -456,12 +474,9 @@ def get_container_logs(name):
     - since: Optional timestamp or relative time (e.g., '2023-01-01T00:00:00', '1h', '30m')
     """
     try:
-        # First, get the container ID using docker ps with filter
-        ps_result = subprocess.run(
+        ps_result = run_subprocess(
             ['docker', 'ps', '--all', '--latest', '--filter', f'name=^{re.escape(name)}$', '--quiet'],
-            capture_output=True,
-            text=True,
-            check=True
+            timeout=DOCKER_PS_TIMEOUT,
         )
 
         container_id = ps_result.stdout.strip()
@@ -480,17 +495,16 @@ def get_container_logs(name):
         if since:
             logs_cmd.extend(['--since', since])
 
-        # Execute docker logs command
-        logs_result = subprocess.run(
-            logs_cmd,
-            capture_output=True,
-            text=True,
-            check=True
-        )
+        logs_result = run_subprocess(logs_cmd, timeout=DOCKER_LOGS_TIMEOUT)
 
         # Return raw output as plain text
         return Response(logs_result.stdout, mimetype='text/plain'), 200
 
+    except subprocess.TimeoutExpired:
+        return jsonify({
+            'error': 'docker logs timed out',
+            'details': f'No response within {DOCKER_LOGS_TIMEOUT}s'
+        }), 504
     except subprocess.CalledProcessError as e:
         return jsonify({
             'error': 'Failed to execute docker command',
@@ -517,12 +531,9 @@ def stop_container(name):
     docker stop $(docker ps --all --latest --filter 'name=<name>' --quiet)
     """
     try:
-        # First, get the container ID using docker ps with filter
-        ps_result = subprocess.run(
+        ps_result = run_subprocess(
             ['docker', 'ps', '--all', '--latest', '--filter', f'name=^{re.escape(name)}$', '--quiet'],
-            capture_output=True,
-            text=True,
-            check=True
+            timeout=DOCKER_PS_TIMEOUT,
         )
 
         container_id = ps_result.stdout.strip()
@@ -534,12 +545,7 @@ def stop_container(name):
             }), 404
 
         # Execute docker stop command (raises CalledProcessError on failure)
-        subprocess.run(
-            ['docker', 'stop', container_id],
-            capture_output=True,
-            text=True,
-            check=True
-        )
+        run_subprocess(['docker', 'stop', container_id], timeout=DOCKER_CTL_TIMEOUT)
 
         return jsonify({
             'status': 'success',
@@ -548,6 +554,11 @@ def stop_container(name):
             'message': 'Container stopped successfully'
         }), 200
 
+    except subprocess.TimeoutExpired:
+        return jsonify({
+            'error': 'docker stop timed out',
+            'details': f'No response within {DOCKER_CTL_TIMEOUT}s'
+        }), 504
     except subprocess.CalledProcessError as e:
         return jsonify({
             'error': 'Failed to execute docker command',
@@ -574,12 +585,9 @@ def start_container(name):
     docker start $(docker ps --all --latest --filter 'name=<name>' --quiet)
     """
     try:
-        # First, get the container ID using docker ps with filter
-        ps_result = subprocess.run(
+        ps_result = run_subprocess(
             ['docker', 'ps', '--all', '--latest', '--filter', f'name=^{re.escape(name)}$', '--quiet'],
-            capture_output=True,
-            text=True,
-            check=True
+            timeout=DOCKER_PS_TIMEOUT,
         )
 
         container_id = ps_result.stdout.strip()
@@ -591,12 +599,7 @@ def start_container(name):
             }), 404
 
         # Execute docker start command (raises CalledProcessError on failure)
-        subprocess.run(
-            ['docker', 'start', container_id],
-            capture_output=True,
-            text=True,
-            check=True
-        )
+        run_subprocess(['docker', 'start', container_id], timeout=DOCKER_CTL_TIMEOUT)
 
         return jsonify({
             'status': 'success',
@@ -605,6 +608,11 @@ def start_container(name):
             'message': 'Container started successfully'
         }), 200
 
+    except subprocess.TimeoutExpired:
+        return jsonify({
+            'error': 'docker start timed out',
+            'details': f'No response within {DOCKER_CTL_TIMEOUT}s'
+        }), 504
     except subprocess.CalledProcessError as e:
         return jsonify({
             'error': 'Failed to execute docker command',
