@@ -378,10 +378,12 @@ def save_settings(new_settings):
 
 @app.before_request
 def _enforce_webapi_enabled():
-    # Always allow the webApiEnabled setting to be inspected and re-enabled
-    # so an operator who disabled the API can recover without SSH.
-    # GET /settings/webApiEnabled and PUT /settings/webApiEnabled/<value>.
-    if request.path == '/settings/webApiEnabled' or \
+    # /health is a liveness signal — must answer regardless of API toggle so
+    # systemd/docker/k8s probes and external monitors keep working.
+    # /settings/webApiEnabled paths stay open so an operator who disabled the
+    # API can re-enable it without SSH.
+    if request.path == '/health' or \
+       request.path == '/settings/webApiEnabled' or \
        request.path.startswith('/settings/webApiEnabled/'):
         return None
 
