@@ -46,6 +46,9 @@ if command -v parted >/dev/null 2>&1; then
     fi
 fi
 
-# Default to slot a (initial installation)
-echo "a"
-exit 0
+# All three detection methods failed. Refuse to fabricate a slot — RAUC
+# treats our stdout as authoritative, so guessing wrong would let it
+# install over the currently-running rootfs. Exit non-zero with no stdout
+# so RAUC aborts the operation and the operator can investigate.
+echo "ERROR: cannot determine current boot slot from cmdline, findmnt, or GPT flag" >&2
+exit 1
