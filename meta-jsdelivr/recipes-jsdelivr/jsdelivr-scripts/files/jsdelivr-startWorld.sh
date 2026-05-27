@@ -236,11 +236,12 @@ fi
 # This ensures container is running before systemMonitor starts checking
 echo "Starting container for the first time..." > /dev/tty3
 docker rm -f globalping-probe 2>/dev/null
-/usr/bin/docker run -d $TMPFS_OPTS $READONLY_OPTS --env GP_HOST_HW --env GP_HOST_DEVICE --env GP_HOST_FIRMWARE --env GP_PROBE_UUID --log-driver local --log-opt max-size=10m --network host --restart=always --name globalping-probe globalping/globalping-probe
-
-# Signal that boot is ready - systemMonitor can now start checking
-touch "$BOOT_READY_FLAG"
-echo "Boot ready flag set, container started" > /dev/tty3
+if /usr/bin/docker run -d $TMPFS_OPTS $READONLY_OPTS --env GP_HOST_HW --env GP_HOST_DEVICE --env GP_HOST_FIRMWARE --env GP_PROBE_UUID --log-driver local --log-opt max-size=10m --network host --restart=always --name globalping-probe globalping/globalping-probe; then
+    touch "$BOOT_READY_FLAG"
+    echo "Boot ready flag set, container started" > /dev/tty3
+else
+    echo "Initial docker run failed; main loop will retry" > /dev/tty3
+fi
 
 while [ 1 ]; do
 
@@ -252,7 +253,11 @@ while [ 1 ]; do
         # This happens on reboots when container exists from previous boot but is stopped
         docker rm -f globalping-probe 2>/dev/null
 
-        /usr/bin/docker run -d $TMPFS_OPTS $READONLY_OPTS --env GP_HOST_HW --env GP_HOST_DEVICE --env GP_HOST_FIRMWARE --env GP_PROBE_UUID --log-driver local --log-opt max-size=10m --network host --restart=always --name globalping-probe globalping/globalping-probe
+        if /usr/bin/docker run -d $TMPFS_OPTS $READONLY_OPTS --env GP_HOST_HW --env GP_HOST_DEVICE --env GP_HOST_FIRMWARE --env GP_PROBE_UUID --log-driver local --log-opt max-size=10m --network host --restart=always --name globalping-probe globalping/globalping-probe; then
+            # If first attempt failed the flag is still missing — set it now so
+            # systemMonitor can finally start once a run actually succeeds.
+            [ -e "$BOOT_READY_FLAG" ] || touch "$BOOT_READY_FLAG"
+        fi
 
     fi
 
