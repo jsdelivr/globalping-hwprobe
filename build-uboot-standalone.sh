@@ -1,8 +1,12 @@
 #!/bin/bash
 #
 # Standalone U-Boot builder for NanoPi Zero2 (RK3528)
-# This script builds FriendlyElec's U-Boot 2017.09 outside of Yocto
-# and packages the binaries for consumption by Yocto WIC
+# Builds FriendlyElec's U-Boot 2017.09 outside Yocto and packages the binaries.
+#
+# Reproducible builds: set UBOOT_REV / RKBIN_REV to specific commit SHAs to pin
+# the exact source revisions. When unset, the script tracks branch tips
+# (legacy behaviour). Either way, both commit SHAs are recorded in VERSION.txt
+# and the tarball name so the artifact provenance is always traceable.
 #
 
 set -eo pipefail
@@ -11,7 +15,9 @@ set -eo pipefail
 UBOOT_REPO="https://github.com/friendlyarm/uboot-rockchip.git"
 UBOOT_BRANCH="nanopi5-v2017.09"
 UBOOT_VERSION="2017.09"
+UBOOT_REV="${UBOOT_REV:-}"      # commit SHA pin; empty -> use branch tip
 RKBIN_REPO="https://github.com/rockchip-linux/rkbin.git"
+RKBIN_REV="${RKBIN_REV:-}"      # commit SHA pin; empty -> use master tip
 WORK_DIR="${PWD}/uboot-build-standalone"
 OUTPUT_DIR="${WORK_DIR}/output"
 BOARD="nanopi_zero2"
@@ -63,27 +69,54 @@ cd "${WORK_DIR}"
 # Clone or update rkbin repository (required by make.sh)
 if [ -d "rkbin" ]; then
     echo -e "${YELLOW}Updating existing rkbin repository...${NC}"
-    cd rkbin
-    git fetch origin
-    git pull origin master
-    cd ..
+    if [ -n "$RKBIN_REV" ]; then
+        git -C rkbin fetch origin "$RKBIN_REV"
+        git -C rkbin checkout --detach "$RKBIN_REV"
+    else
+        git -C rkbin fetch origin
+        git -C rkbin pull origin master
+    fi
 else
     echo -e "${YELLOW}Cloning rkbin repository...${NC}"
-    git clone --depth 1 ${RKBIN_REPO} rkbin
+    if [ -n "$RKBIN_REV" ]; then
+        # Full clone (no --depth) so the pinned SHA is reachable.
+        git clone "$RKBIN_REPO" rkbin
+        git -C rkbin checkout --detach "$RKBIN_REV"
+    else
+        git clone --depth 1 "$RKBIN_REPO" rkbin
+    fi
 fi
 
 # Clone or update U-Boot repository
 if [ -d "uboot-rockchip" ]; then
     echo -e "${YELLOW}Updating existing U-Boot repository...${NC}"
+    if [ -n "$UBOOT_REV" ]; then
+        git -C uboot-rockchip fetch origin "$UBOOT_REV"
+        git -C uboot-rockchip checkout --detach "$UBOOT_REV"
+    else
+        git -C uboot-rockchip fetch origin
+        git -C uboot-rockchip checkout "$UBOOT_BRANCH"
+        git -C uboot-rockchip pull origin "$UBOOT_BRANCH"
+    fi
     cd uboot-rockchip
-    git fetch origin
-    git checkout ${UBOOT_BRANCH}
-    git pull origin ${UBOOT_BRANCH}
 else
     echo -e "${YELLOW}Cloning U-Boot repository...${NC}"
-    git clone --depth 1 -b ${UBOOT_BRANCH} ${UBOOT_REPO} uboot-rockchip
+    if [ -n "$UBOOT_REV" ]; then
+        git clone "$UBOOT_REPO" uboot-rockchip
+        git -C uboot-rockchip checkout --detach "$UBOOT_REV"
+    else
+        git clone --depth 1 -b "$UBOOT_BRANCH" "$UBOOT_REPO" uboot-rockchip
+    fi
     cd uboot-rockchip
 fi
+
+# Capture the actual commits that were checked out so VERSION.txt and the
+# tarball name reflect what was built, whether pinned or branch-tip.
+UBOOT_COMMIT=$(git -C "${WORK_DIR}/uboot-rockchip" rev-parse HEAD)
+RKBIN_COMMIT=$(git -C "${WORK_DIR}/rkbin" rev-parse HEAD)
+UBOOT_SHORT=${UBOOT_COMMIT:0:8}
+RKBIN_SHORT=${RKBIN_COMMIT:0:8}
+echo -e "${GREEN}Source: U-Boot ${UBOOT_SHORT} + rkbin ${RKBIN_SHORT}${NC}"
 
 echo -e "${GREEN}Building U-Boot for ${BOARD}...${NC}"
 
@@ -141,12 +174,14 @@ U-Boot Version: ${UBOOT_VERSION}
 Board: ${BOARD}
 Branch: ${UBOOT_BRANCH}
 Built on: $(date)
-Commit: $(git rev-parse HEAD)
+U-Boot commit: ${UBOOT_COMMIT}
+rkbin commit:  ${RKBIN_COMMIT}
 EOF
 
-# Create tarball for Yocto
+# Create tarball for Yocto. Name includes both short SHAs so two builds with
+# different source content cannot share a filename.
 cd "${OUTPUT_DIR}"
-TARBALL_NAME="u-boot-nanopi-zero2-prebuilt-${UBOOT_VERSION}.tar.gz"
+TARBALL_NAME="u-boot-nanopi-zero2-prebuilt-${UBOOT_VERSION}-${UBOOT_SHORT}-${RKBIN_SHORT}.tar.gz"
 tar -czf "${WORK_DIR}/${TARBALL_NAME}" *
 
 echo -e "${GREEN}========================================${NC}"
