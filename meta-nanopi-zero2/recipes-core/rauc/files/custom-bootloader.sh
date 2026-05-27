@@ -121,17 +121,22 @@ set_state() {
         PERSIST_OPENED_BY_US=1
     fi
     mkdir -p "${PERSIST_DIR}"
+    WRITE_OK=1
     if echo "${STATE}" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "${STATE_FILE}"; then
         sync
         log "Persisted state for slot $SLOT: $STATE"
     else
         log "ERROR: failed to write state file for slot $SLOT"
         rm -f "${STATE_FILE}.tmp"
+        WRITE_OK=0
     fi
     if [ "$PERSIST_OPENED_BY_US" -eq 1 ]; then
         mount -o remount,ro /persist 2>/dev/null || true
         PERSIST_OPENED_BY_US=0
     fi
+    # Surface write failure to RAUC. Done after remount cleanup so /persist is
+    # left ro even on the failure path.
+    [ "$WRITE_OK" -eq 1 ] || return 1
 }
 
 log "Called with: $*"
