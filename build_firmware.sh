@@ -1,4 +1,4 @@
-git clone git://git.yoctoproject.org/poky -b kirkstone
+git clone https://git.yoctoproject.org/poky -b kirkstone
 cd poky; 
 
 #checkout the tested version of the layer Poky
@@ -15,7 +15,7 @@ git clone https://github.com/linux-sunxi/meta-sunxi.git -b kirkstone
 #checkout the tested version of the layer Sunxi
 cd meta-sunxi; git checkout 3fce491bba0a93337a35534de0913a0f5b4b4c39 ; cd ..
 
-git clone git://git.yoctoproject.org/meta-virtualization.git -b kirkstone
+git clone https://git.yoctoproject.org/meta-virtualization.git -b kirkstone
 #checkout the tested version of the layer Virtualization
 cd meta-virtualization ; git checkout 2d8b3cba8ff27c9ec2187a52b6a551fe1dcfaa07 ; cd ..
 
