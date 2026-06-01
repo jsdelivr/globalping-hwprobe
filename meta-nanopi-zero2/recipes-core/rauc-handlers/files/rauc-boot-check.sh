@@ -53,9 +53,19 @@ log "Starting boot slot verification..."
 RAUC_SLOT=$($GREP -o 'rauc\.slot=[ab]' /proc/cmdline | cut -d= -f2)
 
 if [ -z "${RAUC_SLOT}" ]; then
-    log "Warning: rauc.slot parameter not found in kernel cmdline"
-    log "Assuming slot 'a' (initial installation)"
-    RAUC_SLOT="a"
+    # Do NOT assume a slot: a freshly-flashed image always carries rauc.slot in
+    # its extlinux append line, so a missing value means an abnormal/edited
+    # boot. Guessing here would increment the wrong slot's boot counter and
+    # could roll back the wrong slot. Skip all bookkeeping this boot instead.
+    log "ERROR: rauc.slot not found in kernel cmdline; cannot identify boot slot"
+    log "Skipping boot-counter / rollback bookkeeping this boot to avoid acting on the wrong slot"
+    mkdir -p "${RAUC_STATUS_DIR}"
+    cat > "${BOOT_STATUS_FILE}" <<EOF
+BOOT_SLOT=unknown
+BOOT_TIME=$(date -u +%s)
+STATUS=unknown-slot
+EOF
+    exit 0
 fi
 
 log "Detected boot slot: ${RAUC_SLOT}"

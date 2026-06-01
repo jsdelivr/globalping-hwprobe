@@ -53,13 +53,20 @@ log "Post-install handler started"
 # Detect current slot from kernel cmdline (most reliable method)
 CURRENT_SLOT=$($GREP -o 'rauc\.slot=[ab]' /proc/cmdline 2>/dev/null | cut -d= -f2)
 
-# Fallback: check which partition has legacy_boot flag
+# Fallback: check which partition actually has the legacy_boot flag. Check
+# BOTH explicitly — never assume "b" just because "a" lacks the flag, since
+# a wrong guess here makes RAUC install over (and the post-install rewrite
+# clobber) the live rootfs. If neither is flagged, the state is unknown:
+# abort rather than fabricate a slot.
 if [ -z "$CURRENT_SLOT" ]; then
     log "No rauc.slot in cmdline, checking GPT flags"
-    if $PARTED -s "$DISK" print 2>/dev/null | $GREP -E "^\s*${ROOTFS_A_PARTNUM}\s" | $GREP -q "legacy_boot"; then
+    PARTED_OUT=$($PARTED -s "$DISK" print 2>/dev/null)
+    if echo "$PARTED_OUT" | $GREP -E "^\s*${ROOTFS_A_PARTNUM}\s" | $GREP -q "legacy_boot"; then
         CURRENT_SLOT="a"
-    else
+    elif echo "$PARTED_OUT" | $GREP -E "^\s*${ROOTFS_B_PARTNUM}\s" | $GREP -q "legacy_boot"; then
         CURRENT_SLOT="b"
+    else
+        error "Cannot determine current slot (no rauc.slot in cmdline, no legacy_boot flag on either partition); aborting to avoid overwriting the live rootfs"
     fi
 fi
 

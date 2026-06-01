@@ -46,16 +46,37 @@ log() {
     $LOGGER -t rauc-bootloader "$*" 2>/dev/null || true
 }
 
+# parted can transiently fail on a busy/worn eMMC; retry before trusting an
+# empty result so a single hiccup doesn't push callers into the fallback path.
+parted_print() {
+    _i=0
+    while [ "$_i" -lt 3 ]; do
+        _out=$($PARTED -s "$DISK" print 2>/dev/null)
+        [ -n "$_out" ] && { echo "$_out"; return 0; }
+        _i=$((_i + 1))
+        sleep 1
+    done
+    return 1
+}
+
 get_primary() {
-    PARTED_OUT=$($PARTED -s "$DISK" print 2>/dev/null)
+    PARTED_OUT=$(parted_print)
     if echo "$PARTED_OUT" | $GREP -E "^\s*${ROOTFS_A_PARTNUM}\s" | $GREP -q "legacy_boot"; then
         echo "a"
     elif echo "$PARTED_OUT" | $GREP -E "^\s*${ROOTFS_B_PARTNUM}\s" | $GREP -q "legacy_boot"; then
         echo "b"
     else
-        # Default to current slot from kernel cmdline, or 'a' if not found
+        # No legacy_boot flag readable: fall back to the slot we actually
+        # booted from. Only abort if that is ALSO unknown — never fabricate a
+        # slot, since RAUC treats our answer as authoritative and a wrong guess
+        # can target the live rootfs.
         SLOT=$($GREP -o 'rauc\.slot=[ab]' /proc/cmdline 2>/dev/null | cut -d= -f2)
-        echo "${SLOT:-a}"
+        if [ -n "$SLOT" ]; then
+            echo "$SLOT"
+        else
+            log "ERROR: cannot determine primary slot (no legacy_boot flag, no rauc.slot in cmdline)"
+            exit 1
+        fi
     fi
 }
 
@@ -93,12 +114,17 @@ get_state() {
     # $1 = slot (a or b)
     SLOT="$1"
     STATE_FILE="${PERSIST_DIR}/state-${SLOT}"
-    if [ -f "${STATE_FILE}" ]; then
-        cat "${STATE_FILE}"
-    else
-        # Safe default: missing file means slot has never been marked bad
-        echo "good"
-    fi
+    STATE="good"
+    [ -f "${STATE_FILE}" ] && STATE=$(cat "${STATE_FILE}" 2>/dev/null)
+    # RAUC's custom-backend get-state parser accepts only "good"/"bad". The
+    # project also writes "pending" (post-install, pre-validation), which its
+    # own boot-counter rollback understands. Normalize anything that isn't
+    # "bad" to "good" so RAUC never errors; "bad" is preserved as the rollback
+    # signal, and pending-vs-good is decided by the boot counter, not here.
+    case "$STATE" in
+        bad) echo "bad" ;;
+        *)   echo "good" ;;
+    esac
 }
 
 set_state() {
