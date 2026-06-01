@@ -242,17 +242,33 @@ if [ -b "$ROOTFS_A" ] && [ -b "$ROOTFS_B" ]; then
         clone_fatal
     fi
 
-    # Verify the clone landed: check that rootfs-b has the boot files we'd need
-    # to come back up after a rollback.
+    # The clone is a block copy of rootfs-a, so rootfs-b now carries rootfs-a's
+    # extlinux.conf (root=PARTLABEL=rootfs-a rauc.slot=a). Mount rw, retarget it
+    # to slot b, and verify the CONTENT — not just that the file exists — so a
+    # rollback into rootfs-b actually boots rootfs-b instead of re-mounting the
+    # failing rootfs-a. (firstBoot does this at runtime too, but that is
+    # best-effort; doing it here removes the dependence on it.)
     mkdir -p "$CLONE_MOUNT"
-    if mount -o ro "$ROOTFS_B" "$CLONE_MOUNT" 2>/dev/null; then
-        if [ -f "$CLONE_MOUNT/boot/extlinux/extlinux.conf" ] && [ -f "$CLONE_MOUNT/boot/Image" ]; then
-            echo "rootfs-b populated from rootfs-a (verified)" > /dev/tty3
-            umount "$CLONE_MOUNT"
-            rmdir "$CLONE_MOUNT" 2>/dev/null || true
+    if mount "$ROOTFS_B" "$CLONE_MOUNT" 2>/dev/null; then
+        EXTLINUX="$CLONE_MOUNT/boot/extlinux/extlinux.conf"
+        if [ -f "$EXTLINUX" ] && [ -f "$CLONE_MOUNT/boot/Image" ]; then
+            sed -i -e 's#root=PARTLABEL=rootfs-a#root=PARTLABEL=rootfs-b#g' \
+                   -e 's#rauc\.slot=a#rauc.slot=b#g' \
+                   -e 's#Slot A#Slot B#g' "$EXTLINUX"
+            sync
+            if grep -q 'root=PARTLABEL=rootfs-b' "$EXTLINUX" && grep -q 'rauc.slot=b' "$EXTLINUX"; then
+                echo "rootfs-b populated and extlinux retargeted to slot b (verified)" > /dev/tty3
+                umount "$CLONE_MOUNT"
+                rmdir "$CLONE_MOUNT" 2>/dev/null || true
+            else
+                echo "ERROR: rootfs-b extlinux rewrite to slot b failed verification" > /dev/tty3
+                umount "$CLONE_MOUNT" 2>/dev/null || true
+                clone_fatal
+            fi
         else
             echo "ERROR: rootfs-b clone did NOT produce boot files" > /dev/tty3
             ls -la "$CLONE_MOUNT/boot/" > /dev/tty3 2>/dev/null
+            umount "$CLONE_MOUNT" 2>/dev/null || true
             clone_fatal
         fi
     else
