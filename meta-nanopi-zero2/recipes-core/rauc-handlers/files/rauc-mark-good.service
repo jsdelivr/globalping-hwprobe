@@ -1,7 +1,7 @@
 [Unit]
 Description=RAUC Mark Good - Validate successful boot
 Documentation=https://rauc.io/
-After=multi-user.target docker.service rauc.service rauc-boot-check.service
+After=multi-user.target docker.service rauc.service rauc-boot-check.service jsdelivr.service
 Wants=docker.service
 RequiresMountsFor=/persist
 
@@ -9,11 +9,16 @@ RequiresMountsFor=/persist
 Type=oneshot
 ExecStart=/usr/lib/rauc/rauc-mark-good.sh
 RemainAfterExit=yes
-TimeoutStartSec=120
+TimeoutStartSec=300
 StandardOutput=journal
 StandardError=journal
-# Give services time to start before validation
-ExecStartPre=/bin/sleep 10
+# Wait for startWorld to signal the container is actually up
+# (/tmp/.jsdelivr_boot_ready) before validating, so we sample steady-state
+# health and not startWorld's docker stop/format/reload window — which on
+# first boot / RESET can exceed the old fixed 10s wait and make validation
+# record a false failure. Time out after ~120s and validate anyway so a
+# genuinely stuck boot is still caught.
+ExecStartPre=/bin/sh -c 'i=0; while [ $i -lt 120 ]; do [ -e /tmp/.jsdelivr_boot_ready ] && break; i=$((i+1)); sleep 1; done'
 
 [Install]
 WantedBy=multi-user.target
