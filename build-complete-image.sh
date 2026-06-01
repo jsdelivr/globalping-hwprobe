@@ -307,6 +307,16 @@ cp sources/rkbin/idblock.img \
 cp sources/uboot-rockchip/uboot.img \
    meta-nanopi-zero2/recipes-bsp/u-boot/files/uboot.img
 
+# U-Boot output is not bit-reproducible, so the recipe's SRC_URI md5sum pins
+# would mismatch the freshly-copied binaries and break the next do_fetch.
+# Rewrite the pins in lockstep with the copy.
+UBOOT_RECIPE="meta-nanopi-zero2/recipes-bsp/u-boot/u-boot-nanopi-zero2-prebuilt_2017.09.bb"
+IDB_MD5=$(md5sum meta-nanopi-zero2/recipes-bsp/u-boot/files/idbloader.img | cut -d' ' -f1)
+UBOOT_MD5=$(md5sum meta-nanopi-zero2/recipes-bsp/u-boot/files/uboot.img | cut -d' ' -f1)
+sed -i -E "s|(file://idbloader.img;md5sum=)[0-9a-f]+|\1${IDB_MD5}|" "$UBOOT_RECIPE"
+sed -i -E "s|(file://uboot.img;md5sum=)[0-9a-f]+|\1${UBOOT_MD5}|" "$UBOOT_RECIPE"
+echo -e "${GREEN}✓ Updated U-Boot md5 pins: idbloader=${IDB_MD5} uboot=${UBOOT_MD5}${NC}"
+
 # Real binaries now in place — disarm the dummy-cleanup so the EXIT trap
 # does not delete the just-installed real U-Boot files.
 DUMMY_UBOOT_CREATED=0

@@ -17,7 +17,7 @@ COMPATIBLE_MACHINE = "nanopi-zero2"
 # Using FriendlyElec reference bootloaders for testing
 SRC_URI = " \
     file://idbloader.img;md5sum=9ac3a6f4a9b5f9a7418b619ac2c766bb \
-    file://uboot.img;md5sum=142423805ff3f271b949dc0786949fe6 \
+    file://uboot.img;md5sum=8cb020b3beef396a34ab49656814a901 \
 "
 
 S = "${WORKDIR}"
