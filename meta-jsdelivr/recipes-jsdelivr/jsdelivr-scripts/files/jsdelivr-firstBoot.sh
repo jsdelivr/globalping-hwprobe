@@ -380,6 +380,19 @@ if touch "${PERSIST_MOUNT}/${FIRST_BOOT_FLAG}"; then
     log "Created completion flag on persist partition"
     # Clear the in-progress tombstone now that we've reached completion
     rm -f "${PERSIST_MOUNT}/${FIRST_BOOT_INPROGRESS_FLAG}"
+    # First boot completed successfully: treat this reboot as a validated
+    # checkpoint and reset this slot's boot counter. rauc-boot-check already
+    # incremented it earlier this boot; without this reset the firstBoot
+    # reboot burns one rollback attempt before mark-good ever runs, halving
+    # the 3-attempt budget.
+    mkdir -p "${PERSIST_MOUNT}/rauc"
+    if echo "0" > "${PERSIST_MOUNT}/rauc/boot-count-${RAUC_SLOT}.tmp" && \
+       mv "${PERSIST_MOUNT}/rauc/boot-count-${RAUC_SLOT}.tmp" "${PERSIST_MOUNT}/rauc/boot-count-${RAUC_SLOT}"; then
+        log "Reset boot-count for slot ${RAUC_SLOT}"
+    else
+        log "WARNING: could not reset boot-count for slot ${RAUC_SLOT}"
+        rm -f "${PERSIST_MOUNT}/rauc/boot-count-${RAUC_SLOT}.tmp"
+    fi
     sync
     # Remount /persist back to read-only for safety
     mount -o remount,ro /persist
