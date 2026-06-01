@@ -164,27 +164,41 @@ if [ "${BOOT_COUNT}" -ge "${MAX_BOOT_ATTEMPTS}" ]; then
         NEW_COUNT=0
     elif [ "${OTHER_STATE}" != "bad" ]; then
         log "ROLLBACK: Switching to slot ${OTHER_SLOT}"
-        # Mark current slot as bad, reset other slot's counter
-        if [ -d "${PERSIST_DIR}" ]; then
-            mount -o remount,rw /persist 2>/dev/null || true
-            echo "bad" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "${STATE_FILE}"
-            echo "0" > "${OTHER_COUNTER_FILE}.tmp" && mv "${OTHER_COUNTER_FILE}.tmp" "${OTHER_COUNTER_FILE}"
-            sync
-            mount -o remount,ro /persist 2>/dev/null || true
-        fi
-        # Flip legacy_boot flag to other slot. Treat as atomic: if the first
-        # parted fails, abort the rollback (current slot still has the flag,
-        # we keep booting). If the second fails after the first succeeded,
-        # try to undo the first so we don't leave both partitions flagged
-        # (U-Boot would still pick one, but the state is ambiguous).
+        # Flip legacy_boot FIRST and commit the state/counter changes only after
+        # the GPT flip actually succeeds. Previously state=bad + the counter
+        # reset were written before parted; a failing parted (worn/busy eMMC)
+        # then left the current slot marked bad with its counter still at the
+        # threshold, so every subsequent boot re-entered this rollback path and
+        # retried the failing flip forever.
         if ! /usr/sbin/parted -s "${DISK}" set ${OTHER_PARTNUM} legacy_boot on; then
             log "ABORT ROLLBACK: failed to set legacy_boot on slot ${OTHER_SLOT} (partition ${OTHER_PARTNUM}); keeping current slot active"
+            # Reset our own counter so we retry next boot instead of looping the
+            # failing rollback path every boot.
+            if mountpoint -q /persist && mount -o remount,rw /persist 2>/dev/null; then
+                echo "0" > "${COUNTER_FILE}.tmp" && mv "${COUNTER_FILE}.tmp" "${COUNTER_FILE}"
+                sync
+                mount -o remount,ro /persist 2>/dev/null || true
+            fi
+            NEW_COUNT=0
         elif ! /usr/sbin/parted -s "${DISK}" set ${CURRENT_PARTNUM} legacy_boot off; then
             log "ABORT ROLLBACK: failed to clear legacy_boot on slot ${RAUC_SLOT} (partition ${CURRENT_PARTNUM}); attempting to undo set on slot ${OTHER_SLOT}"
             /usr/sbin/parted -s "${DISK}" set ${OTHER_PARTNUM} legacy_boot off || \
                 log "WARNING: undo also failed; both partitions may now have legacy_boot set"
             sync
+            if mountpoint -q /persist && mount -o remount,rw /persist 2>/dev/null; then
+                echo "0" > "${COUNTER_FILE}.tmp" && mv "${COUNTER_FILE}.tmp" "${COUNTER_FILE}"
+                sync
+                mount -o remount,ro /persist 2>/dev/null || true
+            fi
+            NEW_COUNT=0
         else
+            # GPT flip committed — now it is safe to record the slot states.
+            if mountpoint -q /persist && mount -o remount,rw /persist 2>/dev/null; then
+                echo "bad" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "${STATE_FILE}"
+                echo "0" > "${OTHER_COUNTER_FILE}.tmp" && mv "${OTHER_COUNTER_FILE}.tmp" "${OTHER_COUNTER_FILE}"
+                sync
+                mount -o remount,ro /persist 2>/dev/null || true
+            fi
             sync
             set_rollback_leds
             log "Rebooting into slot ${OTHER_SLOT}..."
