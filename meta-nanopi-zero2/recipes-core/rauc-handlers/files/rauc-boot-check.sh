@@ -76,13 +76,21 @@ log "Detected boot slot: ${RAUC_SLOT}"
 MAX_BOOT_ATTEMPTS=3
 PERSIST_DIR="/persist/rauc"
 
-# Ensure persist directory exists for boot counter
+# Ensure persist directory exists for boot counter. firstBoot.sh normally
+# creates /persist/rauc; this is a fallback. Distinguish "persist not mounted"
+# from "remount failed" and log loudly — a silent failure here disables boot
+# counting and rollback for the whole boot with no trace.
 if mountpoint -q /persist 2>/dev/null; then
     if [ ! -d "${PERSIST_DIR}" ]; then
-        mount -o remount,rw /persist 2>/dev/null || true
-        mkdir -p "${PERSIST_DIR}"
-        mount -o remount,ro /persist 2>/dev/null || true
+        if mount -o remount,rw /persist 2>/dev/null; then
+            mkdir -p "${PERSIST_DIR}" || log "ERROR: failed to create ${PERSIST_DIR}"
+            mount -o remount,ro /persist 2>/dev/null || true
+        else
+            log "ERROR: /persist is read-only and remount,rw failed; boot-counter / rollback bookkeeping disabled this boot"
+        fi
     fi
+else
+    log "ERROR: /persist not mounted; boot-counter / rollback bookkeeping disabled this boot"
 fi
 # Detect the actual boot disk so rollback acts on the device we booted from,
 # not always /dev/mmcblk2. Production is eMMC (mmcblk2), but the same image
