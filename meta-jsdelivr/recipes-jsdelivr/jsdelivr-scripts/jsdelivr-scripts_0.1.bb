@@ -1,8 +1,12 @@
+SUMMARY = "Globalping probe runtime scripts"
+HOMEPAGE = "https://github.com/jsdelivr/globalping-hwprobe"
+SECTION = "scripts"
 
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
 
+SRC_URI += "file://jsdelivr-utils.sh"
 SRC_URI += "file://jsdelivr-startWorld.sh"
 SRC_URI += "file://jsdelivr-firstBoot.sh"
 SRC_URI += "file://jsdelivr-mandatoryReboot.sh"
@@ -14,6 +18,7 @@ SRC_URI += "file://jsdelivr-normalPower.sh"
 SRC_URI += "file://jsdelivr-updateContainerAuto.sh"
 SRC_URI += "file://jsdelivr-grabDevLogs.sh"
 SRC_URI += "file://jsdelivr-keepWatchdogHappy.sh"
+SRC_URI += "file://jsdelivr-client.sh"
 
 
 
@@ -26,6 +31,7 @@ RDEPENDS:${PN} += "bash"
 #created a directory /home/root for target install the script
 do_install() {
              install -d ${D}${bindir}
+             install -m 0755 ${WORKDIR}/jsdelivr-utils.sh ${D}${bindir}
              install -m 0755 ${WORKDIR}/jsdelivr-startWorld.sh ${D}${bindir}
              install -m 0755 ${WORKDIR}/jsdelivr-firstBoot.sh ${D}${bindir}
 
@@ -39,9 +45,10 @@ do_install() {
              install -m 0755 ${WORKDIR}/jsdelivr-updateContainerAuto.sh ${D}${bindir}
              install -m 0755 ${WORKDIR}/jsdelivr-grabDevLogs.sh ${D}${bindir}
              install -m 0755 ${WORKDIR}/jsdelivr-keepWatchdogHappy.sh ${D}${bindir}
+             install -m 0755 ${WORKDIR}/jsdelivr-client.sh ${D}${bindir}
 
 }
 
 #Pack the path
-FILES_${PN} += "${bindir}"
+FILES:${PN} += "${bindir}"
 

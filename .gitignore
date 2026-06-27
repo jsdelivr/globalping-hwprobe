@@ -1,0 +1,6 @@
+# RAUC signing key — never commit. Regenerate locally; see README "RAUC signing keys".
+meta-nanopi-zero2/recipes-core/rauc-bundle/files/dev-ca.key.pem
+meta-nanopi-zero2/recipes-core/rauc/files/dev-ca.key.pem
+
+# build-complete-image.sh timestamped backups of the prebuilt U-Boot binaries
+meta-nanopi-zero2/recipes-bsp/u-boot/files/*.img.backup-*

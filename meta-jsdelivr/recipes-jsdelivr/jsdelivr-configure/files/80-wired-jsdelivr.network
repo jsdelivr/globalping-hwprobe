@@ -1,0 +1,11 @@
+# Wired network configuration for Globalping Probe
+# This file is installed at build time - no runtime modification needed
+[Match]
+Name=eth* en*
+
+[Network]
+DHCP=yes
+VendorClassIdentifier=globalping-probe
+
+[DHCPv4]
+UseDomains=yes

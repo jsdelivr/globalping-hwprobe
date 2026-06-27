@@ -2,7 +2,6 @@
 ConditionPathExists=|!/etc/hostname
 Wants=network-pre.target
 Before=network-pre.target
-After=sys-subsystem-net-devices-eth0.device
 
 [Service]
 Type=oneshot

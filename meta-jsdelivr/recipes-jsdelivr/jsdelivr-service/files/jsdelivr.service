@@ -1,21 +1,23 @@
 [Unit]
 Description= JSDELIVR Container startup script
 Documentation=https://docs.docker.com
-After=network-online.target docker.socket firewalld.service
+After=network-online.target docker.socket firewalld.service local-fs.target
 Wants=network-online.target
-Requires=docker.socket
+Requires=docker.socket local-fs.target
 
 [Service]
-Type=notify
-# the default is not to use systemd for cgroups because the delegate issues still
-# exists and systemd currently does not support the cgroup feature set required
-# for containers run by docker
+# Type=simple, not notify: jsdelivr-startWorld.sh does not call sd_notify(READY=1),
+# so a notify type leaves the start job hung forever and blocks multi-user.target,
+# which in turn prevents rauc-mark-good.service from ever running.
+Type=simple
 ExecStart=/usr/bin/jsdelivr-startWorld.sh
 ExecReload=/bin/kill -s HUP $MAINPID
 # kill only the docker process, not all processes in the cgroup
 KillMode=process
 TimeoutSec=infinity
-# restart the docker process if it exits prematurely
+# restart if the orchestrator exits unexpectedly
+Restart=on-failure
+RestartSec=5s
 
 [Install]
 WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+[Unit]
+Description=eMMC Programming Service
+After=local-fs.target
+ConditionPathExists=/dev/mmcblk2
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/emmc-programmer.sh
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target
