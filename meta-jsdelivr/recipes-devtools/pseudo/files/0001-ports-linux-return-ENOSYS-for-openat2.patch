@@ -1,0 +1,37 @@
+From: Nuno Felicio <nuno.felicio@gmail.com>
+Date: Tue, 04 Aug 2026 01:09:33 +0000
+Subject: [PATCH] ports/linux: return ENOSYS for openat2 in syscall() wrapper
+
+Ubuntu updated tar on 22.04 with the fix for CVE-2025-45582 and now tar
+uses the raw openat2 syscall to go inside the directories. pseudo cannot
+see this syscall (no glibc wrapper exist), it lose track of the dirfd
+and do_package fails with 'tar: Cannot mkdir: Bad address'.
+
+Return ENOSYS for SYS_openat2 like is already done for SYS_renameat2,
+this way tar falls back to the normal openat() that pseudo can track.
+
+Upstream-Status: Pending
+
+diff --git a/ports/linux/pseudo_wrappers.c b/ports/linux/pseudo_wrappers.c
+index 7659897..b07e0cb 100644
+--- a/ports/linux/pseudo_wrappers.c
++++ b/ports/linux/pseudo_wrappers.c
+@@ -78,6 +78,18 @@ syscall(long number, ...) {
+ 	(void) number;
+ #endif
+ 
++#ifdef SYS_openat2
++	/* openat2 has no glibc wrapper and returns fds pseudo cannot
++	 * track, breaking later *at() calls through them. Return ENOSYS
++	 * so callers (e.g. tar hardened for CVE-2025-45582) take their
++	 * openat() fallback path, which pseudo wraps normally.
++	 */
++	if (number == SYS_openat2) {
++		errno = ENOSYS;
++		return -1;
++	}
++#endif
++
+ #ifdef SYS_seccomp
+ 	/* pseudo and seccomp are incompatible as pseudo uses different syscalls
+ 	 * so pretend to enable seccomp but really do nothing */
